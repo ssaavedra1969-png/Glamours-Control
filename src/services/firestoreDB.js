@@ -72,38 +72,34 @@ class FirestoreDB {
 
   async addBulkCajaMovimientos(movimientos, onProgress) {
     const existing = await this.getCaja();
-    const allSorted = [...existing, ...movimientos.map((m, i) => ({
-      ...m, _bulkIndex: i, creado: `${m.fecha}T${String(20 + i).padStart(2, '0')}:00:00`,
-    }))].sort((a, b) => {
-      if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
-      return (a.creado || '').localeCompare(b.creado || '');
-    });
 
+    const existingSorted = [...existing].sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
     const saldos = { Blanco: 0, Negro: 0 };
-    const existentes = [...existing].sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
-    for (const m of existentes) {
+    for (const m of existingSorted) {
       const cat = m.categoria || 'Blanco';
       saldos[cat] = m.saldo_nuevo;
     }
 
+    const newSorted = movimientos.map((m, i) => ({
+      ...m, _bulkIndex: i, creado: `${m.fecha}T${String(20 + i).padStart(2, '0')}:00:00`,
+    })).sort((a, b) => {
+      if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+      return (a.creado || '').localeCompare(b.creado || '');
+    });
+
     const newDocs = [];
-    for (const item of allSorted) {
-      if (item._bulkIndex !== undefined) {
-        const cat = item.categoria || 'Blanco';
-        const mult = item.codigo === 502 ? 1 : -1;
-        const anterior = saldos[cat];
-        saldos[cat] += item.monto * mult;
-        if (saldos[cat] < 0) saldos[cat] = 0;
-        newDocs.push({
-          fecha: item.fecha, tipo: item.tipo, codigo: item.codigo,
-          categoria: cat, descripcion: item.descripcion, monto: item.monto,
-          saldo_anterior: anterior, saldo_nuevo: saldos[cat],
-          origen: item.origen || 'excel', creado: item.creado,
-        });
-      } else {
-        const cat = item.categoria || 'Blanco';
-        saldos[cat] = item.saldo_nuevo;
-      }
+    for (const item of newSorted) {
+      const cat = item.categoria || 'Blanco';
+      const mult = item.codigo === 502 ? 1 : -1;
+      const anterior = saldos[cat];
+      saldos[cat] += item.monto * mult;
+      if (saldos[cat] < 0) saldos[cat] = 0;
+      newDocs.push({
+        fecha: item.fecha, tipo: item.tipo, codigo: item.codigo,
+        categoria: cat, descripcion: item.descripcion, monto: item.monto,
+        saldo_anterior: anterior, saldo_nuevo: saldos[cat],
+        origen: item.origen || 'excel', creado: item.creado,
+      });
     }
 
     const saved = [];

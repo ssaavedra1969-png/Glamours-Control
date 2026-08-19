@@ -223,7 +223,7 @@ export default function Caja() {
                             <td className="amount">{formatCurrency(m.saldo_nuevo)}</td>
                             <td style={{ display: 'flex', gap: '0.25rem' }}>
                               <button className="btn-icon" onClick={() => openEdit(m)} title="Editar"><Edit3 size={14} /></button>
-                              {m.origen === 'manual' && <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar"><Trash2 size={14} /></button>}
+                              <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar"><Trash2 size={14} /></button>
                             </td>
                           </tr>
                         ))}
