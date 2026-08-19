@@ -49,7 +49,7 @@ export default function Ventas() {
       const negro = data.filter((v) => v.categoria === 'Negro').reduce((s, v) => s + v.monto, 0);
       const tarjeta = data.filter((v) => v.medio_pago === 'Tarjeta').reduce((s, v) => s + v.monto, 0);
       setStats({ blanco, negro, tarjeta, total: blanco + negro + tarjeta });
-    } catch { toast.error('Error al cargar ventas'); }
+    } catch (err) { console.error('Error cargando ventas:', err); toast.error('Error al cargar ventas: ' + (err.message || err.code || 'desconocido')); }
     finally { setLoading(false); }
   };
 

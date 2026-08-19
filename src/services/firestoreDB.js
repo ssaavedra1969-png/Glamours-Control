@@ -1,18 +1,21 @@
 import { db } from '../config/firebase';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  query, orderBy, where, writeBatch, getDoc, setDoc, limit as firestoreLimit,
+  query, where, writeBatch, getDoc, setDoc, limit as firestoreLimit,
 } from 'firebase/firestore';
 import { processData } from '../utils/excelParser';
-
-const generateId = () => Math.random().toString(36).substring(2, 15);
 
 function col(name) { return collection(db, name); }
 function docRef(name, id) { return doc(db, name, id); }
 
+function sortByCreadoDesc(docs) {
+  return docs.sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
+}
+
 async function getAll(collectionName) {
-  const snap = await getDocs(query(col(collectionName), orderBy('creado', 'desc')));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const snap = await getDocs(col(collectionName));
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return sortByCreadoDesc(docs);
 }
 
 async function queryFiltered(collectionName, filters = []) {
@@ -24,12 +27,11 @@ async function queryFiltered(collectionName, filters = []) {
     }
   }
   if (constraints.length > 0) {
-    q = query(q, ...constraints, orderBy('creado', 'desc'));
-  } else {
-    q = query(q, orderBy('creado', 'desc'));
+    q = query(q, ...constraints);
   }
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return sortByCreadoDesc(docs);
 }
 
 async function filterByDateRange(collectionName, fechaInicio, fechaFin) {
@@ -145,8 +147,8 @@ class FirestoreDB {
   }
 
   async _recalculateAllSaldo() {
-    const allSnap = await getDocs(query(col('caja'), orderBy('creado', 'asc')));
-    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const allSnap = await getDocs(col('caja'));
+    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
     const saldos = { Blanco: 0, Negro: 0 };
     const batch = writeBatch(db);
     for (const m of all) {
