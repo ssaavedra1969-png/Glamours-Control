@@ -90,68 +90,57 @@ export default function Configuracion() {
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
           <button
             className="btn btn-danger"
-            onClick={() => {
+            onClick={async () => {
               const ok = window.confirm('Va a ELIMINAR TODOS LOS DATOS y descargar un backup.\n\nContinuar?');
               if (!ok) return;
+              try {
+                toast.loading('Descargando backup...');
+                const backup = await mockDB.exportAllData();
+                toast.loading('Eliminando datos...');
+                await mockDB.deleteAllCollections();
 
-              // Recopilar datos
-              const backup = {};
-              const keys = [];
-              for (let i = 0; i < localStorage.length; i++) {
-                const k = localStorage.key(i);
-                if (k && k.startsWith('glamours_')) {
-                  keys.push(k);
-                  try { backup[k] = JSON.parse(localStorage.getItem(k)); }
-                  catch { backup[k] = localStorage.getItem(k); }
-                }
+                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0,10) + '.json';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+
+                toast.dismiss();
+                toast.success('Datos eliminados y backup descargado');
+                loadData();
+              } catch (err) {
+                toast.dismiss();
+                toast.error('Error: ' + err.message);
               }
-              backup._meta = { fecha: new Date().toISOString(), claves: keys };
-
-              // Borrar PRIMERO
-              keys.forEach((k) => localStorage.removeItem(k));
-              localStorage.setItem('glamours_empty', '1');
-
-              // Descargar backup DESPUES
-              const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0,10) + '.json';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-
-              toast.success('Datos eliminados y backup descargado');
-              window.location.reload();
             }}
           >
             <Trash2 size={16} /> Eliminar Todo y Descargar Backup
           </button>
           <button
             className="btn btn-outline"
-            onClick={() => {
-              const backup = {};
-              const keys = [];
-              for (let i = 0; i < localStorage.length; i++) {
-                const k = localStorage.key(i);
-                if (k && k.startsWith('glamours_')) {
-                  keys.push(k);
-                  try { backup[k] = JSON.parse(localStorage.getItem(k)); }
-                  catch { backup[k] = localStorage.getItem(k); }
-                }
+            onClick={async () => {
+              try {
+                toast.loading('Generando backup...');
+                const backup = await mockDB.exportAllData();
+                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0,10) + '.json';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                toast.dismiss();
+                toast.success('Backup descargado (sin borrar)');
+              } catch (err) {
+                toast.dismiss();
+                toast.error('Error: ' + err.message);
               }
-              backup._meta = { fecha: new Date().toISOString(), claves: keys };
-              const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0,10) + '.json';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-              toast.success('Backup descargado (sin borrar)');
             }}
           >
             <Download size={16} /> Solo Descargar Backup

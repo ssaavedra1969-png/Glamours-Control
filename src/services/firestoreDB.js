@@ -395,6 +395,37 @@ class FirestoreDB {
       hasDuplicates: duplicates.caja.length > 0 || duplicates.ventas.length > 0,
     };
   }
+
+  async exportAllData() {
+    const collections = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'configuracion', 'users'];
+    const data = {};
+    for (const name of collections) {
+      const snap = await getDocs(col(name));
+      data[name] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
+    data._meta = { fecha: new Date().toISOString(), collections };
+    return data;
+  }
+
+  async deleteAllCollections() {
+    const collections = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'configuracion', 'users'];
+    for (const name of collections) {
+      const snap = await getDocs(col(name));
+      const batch = writeBatch(db);
+      let count = 0;
+      for (const d of snap.docs) {
+        batch.delete(d.ref);
+        count++;
+        if (count % 500 === 0) {
+          await batch.commit();
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+      if (count % 500 !== 0) {
+        await batch.commit();
+      }
+    }
+  }
 }
 
 const firestoreDB = new FirestoreDB();
