@@ -70,17 +70,17 @@ class FirestoreDB {
     return { id: ref.id, ...docData };
   }
 
-  async addBulkCajaMovimientos(movimientos) {
+  async addBulkCajaMovimientos(movimientos, onProgress) {
     const existing = await this.getCaja();
     const allSorted = [...existing, ...movimientos.map((m, i) => ({
       ...m, _bulkIndex: i, creado: `${m.fecha}T${String(20 + i).padStart(2, '0')}:00:00`,
     }))].sort((a, b) => {
       if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
-      return new Date(a.creado) - new Date(b.creado);
+      return (a.creado || '').localeCompare(b.creado || '');
     });
 
     const saldos = { Blanco: 0, Negro: 0 };
-    const existentes = [...existing].sort((a, b) => new Date(a.creado) - new Date(b.creado));
+    const existentes = [...existing].sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
     for (const m of existentes) {
       const cat = m.categoria || 'Blanco';
       saldos[cat] = m.saldo_nuevo;
@@ -111,10 +111,17 @@ class FirestoreDB {
     for (let i = 0; i < newDocs.length; i += BATCH_SIZE) {
       const chunk = newDocs.slice(i, i + BATCH_SIZE);
       const batch = writeBatch(db);
+      const refs = [];
       for (const d of chunk) {
-        const ref = await addDoc(col('caja'), d);
-        saved.push({ id: ref.id, ...d });
+        const ref = doc(col('caja'));
+        batch.set(ref, d);
+        refs.push({ ref, data: d });
       }
+      await batch.commit();
+      for (const { ref, data } of refs) {
+        saved.push({ id: ref.id, ...data });
+      }
+      if (onProgress) onProgress(saved.length);
       if (i + BATCH_SIZE < newDocs.length) {
         await new Promise((r) => setTimeout(r, 100));
       }
@@ -194,10 +201,27 @@ class FirestoreDB {
     return { id: ref.id, ...docData };
   }
 
-  async addBulkVentas(ventas) {
+  async addBulkVentas(ventas, onProgress) {
     const saved = [];
-    for (const venta of ventas) {
-      saved.push(await this.addVenta(venta));
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < ventas.length; i += BATCH_SIZE) {
+      const chunk = ventas.slice(i, i + BATCH_SIZE);
+      const batch = writeBatch(db);
+      const refs = [];
+      for (const venta of chunk) {
+        const docData = { ...venta, creado: new Date().toISOString() };
+        const ref = doc(col('ventas'));
+        batch.set(ref, docData);
+        refs.push({ ref, data: docData });
+      }
+      await batch.commit();
+      for (const { ref, data } of refs) {
+        saved.push({ id: ref.id, ...data });
+      }
+      if (onProgress) onProgress(saved.length);
+      if (i + BATCH_SIZE < ventas.length) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
     }
     return saved;
   }
@@ -344,22 +368,22 @@ class FirestoreDB {
     let ventasCount = 0;
 
     if (newCaja.length > 0) {
-      if (onProgress) onProgress({ phase: `Guardando caja (0/${newCaja.length})...`, step: rawData.length, total: rawData.length });
-      await new Promise((r) => setTimeout(r, 50));
-      const saved = await this.addBulkCajaMovimientos(newCaja);
+      const saved = await this.addBulkCajaMovimientos(newCaja, (count) => {
+        if (onProgress) onProgress({ phase: `Guardando caja (${count}/${newCaja.length})...`, step: count, total: newCaja.length });
+      });
       cajaCount = saved.length;
-      if (onProgress) onProgress({ phase: `Caja guardada: ${cajaCount}`, step: rawData.length, total: rawData.length });
+      if (onProgress) onProgress({ phase: `Caja guardada: ${cajaCount}`, step: cajaCount, total: newCaja.length });
       await new Promise((r) => setTimeout(r, 50));
     }
 
     if (newVentas.length > 0) {
-      if (onProgress) onProgress({ phase: `Guardando ventas (0/${newVentas.length})...`, step: rawData.length, total: rawData.length });
-      await new Promise((r) => setTimeout(r, 50));
       const saved = await this.addBulkVentas(newVentas.map((v) => ({
         ...v, usuario: 'admin@glamours.com',
-      })));
+      })), (count) => {
+        if (onProgress) onProgress({ phase: `Guardando ventas (${count}/${newVentas.length})...`, step: count, total: newVentas.length });
+      });
       ventasCount = saved.length;
-      if (onProgress) onProgress({ phase: `Ventas guardadas: ${ventasCount}`, step: rawData.length, total: rawData.length });
+      if (onProgress) onProgress({ phase: `Ventas guardadas: ${ventasCount}`, step: ventasCount, total: newVentas.length });
       await new Promise((r) => setTimeout(r, 50));
     }
 
