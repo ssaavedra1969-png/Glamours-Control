@@ -1,60 +1,41 @@
 import { db } from '../config/firebase';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  query, where, writeBatch, getDoc, setDoc, limit as firestoreLimit,
+  query, where, writeBatch, getDoc, limit as firestoreLimit,
 } from 'firebase/firestore';
 import { processData } from '../utils/excelParser';
 
 function col(name) { return collection(db, name); }
 function docRef(name, id) { return doc(db, name, id); }
 
-function sortByCreadoDesc(docs) {
-  return docs.sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
-}
-
-async function getAll(collectionName) {
+async function getAllRaw(collectionName) {
   const snap = await getDocs(col(collectionName));
-  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  return sortByCreadoDesc(docs);
-}
-
-async function queryFiltered(collectionName, filters = []) {
-  let q = col(collectionName);
-  const constraints = [];
-  for (const f of filters) {
-    if (f.field && f.op && f.value !== undefined && f.value !== null) {
-      constraints.push(where(f.field, f.op, f.value));
-    }
-  }
-  if (constraints.length > 0) {
-    q = query(q, ...constraints);
-  }
-  const snap = await getDocs(q);
-  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  return sortByCreadoDesc(docs);
-}
-
-async function filterByDateRange(collectionName, fechaInicio, fechaFin) {
-  const snap = await getDocs(col(collectionName));
-  let results = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  if (fechaInicio) results = results.filter((r) => r.fecha >= fechaInicio);
-  if (fechaFin) results = results.filter((r) => r.fecha <= fechaFin);
-  return results.sort((a, b) => new Date(b.creado) - new Date(a.creado));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
 class FirestoreDB {
   async getCaja(fechaInicio, fechaFin) {
     if (fechaInicio || fechaFin) {
-      return filterByDateRange('caja', fechaInicio, fechaFin);
+      let q = col('caja');
+      const constraints = [];
+      if (fechaInicio) constraints.push(where('fecha', '>=', fechaInicio));
+      if (fechaFin) constraints.push(where('fecha', '<=', fechaFin));
+      q = query(q, ...constraints);
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
     }
-    return getAll('caja');
+    return getAllRaw('caja');
+  }
+
+  async _getLastSaldo(categoria) {
+    const snap = await getDocs(query(col('caja'), where('categoria', '==', categoria), firestoreLimit(1)));
+    if (snap.empty) return 0;
+    return snap.docs[0].data().saldo_nuevo;
   }
 
   async addCajaMovimiento(mov) {
-    const existing = await this.getCaja();
     const categoria = mov.categoria || 'Blanco';
-    const relevantes = existing.filter((m) => m.categoria === categoria);
-    const lastSaldo = relevantes.length > 0 ? relevantes[0].saldo_nuevo : 0;
+    const lastSaldo = await this._getLastSaldo(categoria);
     const mult = mov.codigo === 502 ? 1 : -1;
     const nuevoSaldo = lastSaldo + mov.monto * mult;
     if (nuevoSaldo < 0) {
@@ -70,9 +51,7 @@ class FirestoreDB {
     return { id: ref.id, ...docData };
   }
 
-  async addBulkCajaMovimientos(movimientos, onProgress) {
-    const existing = await this.getCaja();
-
+  async addBulkCajaMovimientos(movimientos, existing, onProgress) {
     const existingSorted = [...existing].sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
     const saldos = { Blanco: 0, Negro: 0 };
     for (const m of existingSorted) {
@@ -81,7 +60,7 @@ class FirestoreDB {
     }
 
     const newSorted = movimientos.map((m, i) => ({
-      ...m, _bulkIndex: i, creado: `${m.fecha}T${String(20 + i).padStart(2, '0')}:00:00`,
+      ...m, creado: `${m.fecha}T${String(20 + i).padStart(2, '0')}:00:00`,
     })).sort((a, b) => {
       if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
       return (a.creado || '').localeCompare(b.creado || '');
@@ -139,39 +118,49 @@ class FirestoreDB {
       });
     }
     await deleteDoc(docRef('caja', id));
-    await this._recalculateAllSaldo();
+    await this._recalculateFromScratch();
   }
 
   async updateCajaMovimiento(id, updates) {
     await updateDoc(docRef('caja', id), updates);
-    await this._recalculateAllSaldo();
+    await this._recalculateFromScratch();
     const snap = await getDoc(docRef('caja', id));
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   }
 
-  async _recalculateAllSaldo() {
+  async _recalculateFromScratch() {
     const allSnap = await getDocs(col('caja'));
     const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
     const saldos = { Blanco: 0, Negro: 0 };
-    const batch = writeBatch(db);
+    let batch = writeBatch(db);
+    let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
       const mult = m.codigo === 502 ? 1 : -1;
       const anterior = saldos[cat];
       saldos[cat] += m.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
-      batch.update(docRef('caja', m.id), {
-        saldo_anterior: anterior, saldo_nuevo: saldos[cat],
-      });
+      batch.update(docRef('caja', m.id), { saldo_anterior: anterior, saldo_nuevo: saldos[cat] });
+      count++;
+      if (count % 500 === 0) {
+        await batch.commit();
+        batch = writeBatch(db);
+      }
     }
-    await batch.commit();
+    if (count % 500 !== 0) await batch.commit();
   }
 
   async getVentas(fechaInicio, fechaFin) {
     if (fechaInicio || fechaFin) {
-      return filterByDateRange('ventas', fechaInicio, fechaFin);
+      let q = col('ventas');
+      const constraints = [];
+      if (fechaInicio) constraints.push(where('fecha', '>=', fechaInicio));
+      if (fechaFin) constraints.push(where('fecha', '<=', fechaFin));
+      q = query(q, ...constraints);
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
     }
-    return getAll('ventas');
+    return getAllRaw('ventas');
   }
 
   async addVenta(venta) {
@@ -181,10 +170,8 @@ class FirestoreDB {
     const ref = await addDoc(col('ventas'), docData);
 
     if (venta.medio_pago === 'Efectivo') {
-      const existing = await this.getCaja();
       const categoria = venta.categoria || 'Blanco';
-      const relevantes = existing.filter((m) => m.categoria === categoria);
-      const lastSaldo = relevantes.length > 0 ? relevantes[0].saldo_nuevo : 0;
+      const lastSaldo = await this._getLastSaldo(categoria);
       await addDoc(col('caja'), {
         fecha: venta.fecha, tipo: 'Ingreso en Caja', codigo: 502,
         categoria,
@@ -234,14 +221,16 @@ class FirestoreDB {
         creado: new Date().toISOString(),
       });
       if (venta.medio_pago === 'Efectivo') {
-        const existing = await this.getCaja();
         const categoria = venta.categoria || 'Blanco';
-        const cajaIdx = existing.findIndex((m) =>
-          m.origen === 'venta' && m.fecha === venta.fecha && m.monto === venta.monto && m.categoria === categoria
-        );
-        if (cajaIdx !== -1) {
-          await deleteDoc(docRef('caja', existing[cajaIdx].id));
-          await this._recalculateAllSaldo();
+        const cajaSnap = await getDocs(query(col('caja'),
+          where('origen', '==', 'venta'),
+          where('fecha', '==', venta.fecha),
+          where('monto', '==', venta.monto),
+          where('categoria', '==', categoria),
+        ));
+        if (!cajaSnap.empty) {
+          await deleteDoc(docRef('caja', cajaSnap.docs[0].id));
+          await this._recalculateFromScratch();
         }
       }
     }
@@ -256,9 +245,15 @@ class FirestoreDB {
 
   async getCierres(fechaInicio, fechaFin) {
     if (fechaInicio || fechaFin) {
-      return filterByDateRange('cierres', fechaInicio, fechaFin);
+      let q = col('cierres');
+      const constraints = [];
+      if (fechaInicio) constraints.push(where('fecha', '>=', fechaInicio));
+      if (fechaFin) constraints.push(where('fecha', '<=', fechaFin));
+      q = query(q, ...constraints);
+      const snap = await getDocs(q);
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
     }
-    return getAll('cierres');
+    return getAllRaw('cierres');
   }
 
   async addCierre(cierre) {
@@ -268,7 +263,7 @@ class FirestoreDB {
   }
 
   async getConciliaciones() {
-    return getAll('conciliaciones');
+    return getAllRaw('conciliaciones');
   }
 
   async addConciliacion(conc) {
@@ -278,7 +273,7 @@ class FirestoreDB {
   }
 
   async getAuditoria() {
-    return getAll('auditoria');
+    return getAllRaw('auditoria');
   }
 
   async addAuditoria(log) {
@@ -312,7 +307,7 @@ class FirestoreDB {
   }
 
   async getUsers() {
-    return getAll('users');
+    return getAllRaw('users');
   }
 
   async addUser(userData) {
@@ -364,7 +359,7 @@ class FirestoreDB {
     let ventasCount = 0;
 
     if (newCaja.length > 0) {
-      const saved = await this.addBulkCajaMovimientos(newCaja, (count) => {
+      const saved = await this.addBulkCajaMovimientos(newCaja, existingCaja, (count) => {
         if (onProgress) onProgress({ phase: `Guardando caja (${count}/${newCaja.length})...`, step: count, total: newCaja.length });
       });
       cajaCount = saved.length;
