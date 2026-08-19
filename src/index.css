@@ -1,0 +1,3 @@
+/* Minimal reset - all theme styles in App.css */
+body { margin: 0; background: #02040a; }
+#root { width: 100%; height: 100vh; }
