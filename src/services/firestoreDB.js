@@ -411,13 +411,14 @@ class FirestoreDB {
     const collections = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'configuracion', 'users'];
     for (const name of collections) {
       const snap = await getDocs(col(name));
-      const batch = writeBatch(db);
+      let batch = writeBatch(db);
       let count = 0;
       for (const d of snap.docs) {
         batch.delete(d.ref);
         count++;
         if (count % 500 === 0) {
           await batch.commit();
+          batch = writeBatch(db);
           await new Promise((r) => setTimeout(r, 50));
         }
       }
