@@ -21,7 +21,7 @@ function computeSaldos(list) {
   const saldos = { Blanco: 0, Negro: 0 };
   for (const m of sorted) {
     const cat = m.categoria || 'Blanco';
-    const mult = [500, 502].includes(m.codigo) ? 1 : -1;
+    const mult = m.codigo === 502 ? 1 : m.codigo === 503 ? 0 : -1;
     saldos[cat] += m.monto * mult;
     if (saldos[cat] < 0) saldos[cat] = 0;
   }
@@ -188,7 +188,7 @@ class FirestoreDB {
     let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
-      const mult = [500, 502].includes(m.codigo) ? 1 : -1;
+      const mult = m.codigo === 502 ? 1 : m.codigo === 503 ? 0 : -1;
       const anterior = saldos[cat];
       saldos[cat] += m.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
