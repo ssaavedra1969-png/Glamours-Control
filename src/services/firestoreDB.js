@@ -53,7 +53,7 @@ class FirestoreDB {
       const snap = await getDoc(docRef('estado', ESTADO_DOC));
       if (snap.exists()) {
         const d = snap.data();
-        if (typeof d.saldo_blanco === 'number') return { Blanco: d.saldo_blanco, Negro: d.saldo_negro || 0 };
+        if (typeof d.saldo_blanco === 'number') return { Blanco: d.saldo_blanco, Negro: d.saldo_negro || 0, _version: d._version || 0 };
       }
     } catch (e) {
       console.warn('getEstadoSaldos fallback:', e.message);
@@ -66,12 +66,13 @@ class FirestoreDB {
 
   async setEstadoSaldos(saldos) {
     try {
-      await setDoc(docRef('estado', ESTADO_DOC), {
+      const data = {
         saldo_blanco: saldos.Blanco || 0,
         saldo_negro: saldos.Negro || 0,
-        _version: saldos._version || 2,
         actualizado: new Date().toISOString(),
-      }, { merge: true });
+      };
+      if (saldos._version != null) data._version = saldos._version;
+      await setDoc(docRef('estado', ESTADO_DOC), data, { merge: true });
     } catch (e) {
       console.warn('setEstadoSaldos fallback:', e.message);
     }
@@ -204,7 +205,7 @@ class FirestoreDB {
       }
     }
     if (count % 500 !== 0) await batch.commit();
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 3 });
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 4 });
   }
 
   async getVentas(fechaInicio, fechaFin) {
@@ -391,7 +392,7 @@ class FirestoreDB {
       saldos[cat] += m.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
     }
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 3 });
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 4 });
     return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length, updated: 0 };
   }
 
