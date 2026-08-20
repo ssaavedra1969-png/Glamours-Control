@@ -26,7 +26,11 @@ export default function Reportes() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [v, c, ci] = await Promise.all([mockDB.getVentas(), mockDB.getCaja(), mockDB.getCierres()]);
+      const [v, c, ci] = await Promise.all([
+        mockDB.getVentas(dateFrom, dateTo),
+        mockDB.getCaja(dateFrom, dateTo),
+        mockDB.getCierres(dateFrom, dateTo),
+      ]);
       setVentas(v); setCaja(c); setCierres(ci);
     } catch {} finally { setLoading(false); }
   };

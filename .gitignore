@@ -26,3 +26,9 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Backups y archivos de prueba local
+Backups/*.json
+Backups/*.ica
+Backups/package.json
+TEST_*.xlsx

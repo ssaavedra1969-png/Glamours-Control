@@ -1,407 +1,404 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend } from 'chart.js';
-import { Bar, Doughnut } from 'react-chartjs-2';
-import { format, subDays } from 'date-fns';
-import { Wallet, CreditCard } from 'lucide-react';
+import { format, subMonths, startOfMonth, endOfMonth, subDays, isWithinInterval, parseISO } from 'date-fns';
+import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Wallet, ShoppingBag, ChevronDown, ChevronRight } from 'lucide-react';
 import mockDB from '../services/firestoreDB';
-import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
-import { today } from '../utils/dateUtils';
 import toast from 'react-hot-toast';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
+function getMonthRange(monthsAgo = 0) {
+  const d = subMonths(new Date(), monthsAgo);
+  return { start: startOfMonth(d), end: endOfMonth(d), label: format(d, 'MMMM yyyy') };
+}
 
-const CARD_BRAND_COLORS = {
-  'Visa': '#1a1f71', 'Mastercard': '#eb001b', 'Amex': '#006fcf', 'Cabal': '#0071ce',
-  'Naranja': '#f37021', 'Mercado Pago': '#009ee3', 'Electron': '#1a1f71',
-  'QR Francés': '#009ee3', 'QR Provincia': '#009ee3', 'QR Nación': '#009ee3',
-  'Otra': '#6b7280',
+function isInRange(fechaStr, start, end) {
+  if (!fechaStr) return false;
+  try { return isWithinInterval(parseISO(fechaStr), { start, end }); } catch { return false; }
+}
+
+function classificarVenta(v) {
+  const banco = (v.banco || '').toLowerCase();
+  const tipo = (v.tipo || '').toLowerCase();
+  if (tipo.includes('transferencia') || banco.startsWith('qr') || banco.includes('mercadopago') || banco.includes('mpago')) return 'transferencia';
+  if (banco.includes('debito') || banco.includes('electron') || banco.includes('maestro') || banco.includes('cad')) return 'debito';
+  if ((v.medio_pago || '').toLowerCase() === 'tarjeta' || (v.medio_pago || '').toLowerCase() === 'electrónico') return 'tarjeta_credito';
+  if (v.categoria === 'Negro') return 'negro';
+  return 'blanco';
+}
+
+const TIPO_CFG = {
+  blanco:            { label: 'Efectivo Blanco',   color: '#e2e8f0', accent: '#cbd5e1', icon: '💵', desc: 'Declarado',       gradient: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)' },
+  negro:             { label: 'Efectivo Negro',    color: '#c4b5fd', accent: '#a78bfa', icon: '🖤', desc: 'No declarado',    gradient: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)' },
+  tarjeta_credito:   { label: 'Tarjeta Crédito',  color: '#fbbf24', accent: '#f59e0b', icon: '💳', desc: 'Visa / Mastercard', gradient: 'linear-gradient(135deg, #422006 0%, #78350f 100%)' },
+  debito:            { label: 'Débito',           color: '#60a5fa', accent: '#3b82f6', icon: '🏦', desc: 'Cabal / Electron / Maestro', gradient: 'linear-gradient(135deg, #172554 0%, #1e3a5f 100%)' },
+  transferencia:     { label: 'Transferencia QR', color: '#34d399', accent: '#10b981', icon: '📱', desc: 'QR / MercadoPago', gradient: 'linear-gradient(135deg, #022c22 0%, #064e3b 100%)' },
 };
 
-const CAJA_CODE_INFO = {
-  500: { label: 'En Caja', color: '#facc15', bg: 'rgba(250,204,21,0.12)' },
-  501: { label: 'Egreso', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
-  502: { label: 'Ingreso', color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-  503: { label: 'Retiro', color: '#f97316', bg: 'rgba(249,115,22,0.12)' },
-};
+const TYPES = ['blanco', 'negro', 'tarjeta_credito', 'debito', 'transferencia'];
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    ventasHoy: 0, blancoHoy: 0, negroHoy: 0, tarjetaHoy: 0,
-    saldoBlanco: 0, saldoNegro: 0, ingresosHoy: 0, egresosHoy: 0,
-    totalBlancoVentas: 0, totalNegroVentas: 0, totalTarjetaVentas: 0, totalVentas: 0,
-  });
-  const [chartData, setChartData] = useState(null);
-  const [pieData, setPieData] = useState(null);
-  const [cardBrandData, setCardBrandData] = useState([]);
-  const [cajaTypeData, setCajaTypeData] = useState([]);
-  const [movimientos, setMovimientos] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ tipo: 'Ingreso en Caja', categoria: 'Blanco', monto: '', descripcion: '' });
-  const [config, setConfig] = useState({ limites_caja: { minimo: 10000, maximo: 200000 } });
+  const [ventas, setVentas] = useState([]);
+  const [caja, setCaja] = useState([]);
+  const [estado, setEstado] = useState({ Blanco: 0, Negro: 0 });
+  const [showCajaDetail, setShowCajaDetail] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const hoy = today();
-      const [caja, ventas, configData] = await Promise.all([
-        mockDB.getCaja().catch((e) => { console.warn('Error caja:', e.message); return []; }),
-        mockDB.getVentas().catch((e) => { console.warn('Error ventas:', e.message); return []; }),
-        mockDB.getConfiguracion().catch((e) => { console.warn('Error config:', e.message); return { iva: 21, limites_caja: { minimo: 10000, maximo: 200000 } }; }),
+      const prevMonthStart = format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
+      const curMonthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
+      const ayer = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+      const [v, c, estado] = await Promise.all([
+        mockDB.getVentas(prevMonthStart, curMonthEnd).catch(() => []),
+        mockDB.getCaja(ayer).catch(() => []),
+        mockDB.getEstadoSaldos().catch(() => ({ Blanco: 0, Negro: 0 })),
       ]);
-      setConfig(configData);
+      setVentas(v);
+      setCaja(c);
+      setEstado(estado);
+    } catch { toast.error('Error al cargar datos'); }
+    finally { setLoading(false); }
+  };
 
-      const ventasHoy = ventas.filter((v) => v.fecha === hoy);
-      const blancoHoy = ventasHoy.filter((v) => v.categoria === 'Blanco').reduce((s, v) => s + v.monto, 0);
-      const negroHoy = ventasHoy.filter((v) => v.categoria === 'Negro').reduce((s, v) => s + v.monto, 0);
-      const tarjetaHoy = ventasHoy.filter((v) => v.medio_pago === 'Tarjeta').reduce((s, v) => s + v.monto, 0);
+  const curMonth = getMonthRange(0);
+  const prevMonth = getMonthRange(1);
 
-      const movsHoy = caja.filter((m) => m.fecha === hoy);
-      const ingresosHoy = movsHoy.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
-      const egresosHoy = movsHoy.filter((m) => [501, 503].includes(m.codigo)).reduce((s, m) => s + m.monto, 0);
-
-      const saldoBlanco = caja.filter((m) => m.categoria === 'Blanco').length > 0
-        ? caja.filter((m) => m.categoria === 'Blanco')[0].saldo_nuevo : 0;
-      const saldoNegro = caja.filter((m) => m.categoria === 'Negro').length > 0
-        ? caja.filter((m) => m.categoria === 'Negro')[0].saldo_nuevo : 0;
-
-      const totalBlancoVentas = ventas.filter((v) => v.categoria === 'Blanco').reduce((s, v) => s + v.monto, 0);
-      const totalNegroVentas = ventas.filter((v) => v.categoria === 'Negro').reduce((s, v) => s + v.monto, 0);
-      const totalTarjetaVentas = ventas.filter((v) => v.medio_pago === 'Tarjeta').reduce((s, v) => s + v.monto, 0);
-
-      setStats({
-        ventasHoy: blancoHoy + negroHoy + tarjetaHoy, blancoHoy, negroHoy, tarjetaHoy,
-        saldoBlanco, saldoNegro, ingresosHoy, egresosHoy,
-        totalBlancoVentas, totalNegroVentas, totalTarjetaVentas,
-        totalVentas: totalBlancoVentas + totalNegroVentas + totalTarjetaVentas,
-      });
-      setMovimientos(caja.slice(0, 10));
-
-      const last7 = Array.from({ length: 7 }, (_, i) => {
-        const d = format(subDays(new Date(), 6 - i), 'yyyy-MM-dd');
-        const label = format(subDays(new Date(), 6 - i), 'dd/MM');
-        const dayVentas = ventas.filter((v) => v.fecha === d);
-        return {
-          label,
-          blanco: dayVentas.filter((v) => v.categoria === 'Blanco').reduce((s, v) => s + v.monto, 0),
-          negro: dayVentas.filter((v) => v.categoria === 'Negro').reduce((s, v) => s + v.monto, 0),
-          tarjeta: dayVentas.filter((v) => v.medio_pago === 'Tarjeta').reduce((s, v) => s + v.monto, 0),
-        };
-      });
-
-      setChartData({
-        labels: last7.map((d) => d.label),
-        datasets: [
-          { label: 'Blanco', data: last7.map((d) => d.blanco), backgroundColor: '#e5e7eb', borderRadius: 4 },
-          { label: 'Negro', data: last7.map((d) => d.negro), backgroundColor: '#1e1b4b', borderRadius: 4 },
-          { label: 'Tarjeta', data: last7.map((d) => d.tarjeta), backgroundColor: '#d4af37', borderRadius: 4 },
-        ],
-      });
-
-      setPieData({
-        labels: ['Blanco', 'Negro', 'Tarjeta'],
-        datasets: [{
-          data: [totalBlancoVentas, totalNegroVentas, totalTarjetaVentas],
-          backgroundColor: ['#e5e7eb', '#1e1b4b', '#d4af37'],
-          borderWidth: 0,
-        }],
-      });
-
-      const brandMap = {};
-      ventas.filter((v) => v.medio_pago === 'Tarjeta').forEach((v) => {
-        const brand = v.banco || 'Otra';
-        if (!brandMap[brand]) brandMap[brand] = 0;
-        brandMap[brand] += v.monto;
-      });
-      const brandList = Object.entries(brandMap)
-        .map(([brand, monto]) => ({ brand, monto }))
-        .sort((a, b) => b.monto - a.monto);
-      setCardBrandData(brandList);
-
-      const cajaMap = {};
-      caja.forEach((m) => {
-        const code = m.codigo;
-        if (!cajaMap[code]) cajaMap[code] = { count: 0, monto: 0 };
-        cajaMap[code].count++;
-        cajaMap[code].monto += m.monto;
-      });
-      const cajaList = [502, 501, 503, 500]
-        .filter((code) => cajaMap[code])
-        .map((code) => ({ code, ...CAJA_CODE_INFO[code], ...cajaMap[code] }));
-      setCajaTypeData(cajaList);
-    } catch {
-      toast.error('Error al cargar datos');
-    } finally {
-      setLoading(false);
+  const agrupar = (lista) => {
+    const totales = {};
+    const porBanco = {};
+    TYPES.forEach((t) => { totales[t] = 0; porBanco[t] = {}; });
+    for (const v of lista) {
+      const tipo = classificarVenta(v);
+      totales[tipo] += v.monto;
+      const brand = v.banco || (tipo === 'blanco' ? 'Efectivo' : tipo === 'negro' ? 'Efectivo' : 'Otro');
+      porBanco[tipo][brand] = (porBanco[tipo][brand] || 0) + v.monto;
     }
+    return { totales, porBanco };
   };
 
-  const handleRegisterMovement = async (e) => {
-    e.preventDefault();
-    if (!form.monto || parseFloat(form.monto) <= 0) return toast.error('Ingrese un monto valido');
-    const codigo = form.tipo === 'Ingreso en Caja' ? 502 : form.tipo === 'Egreso en Caja' ? 501 : 503;
-    await mockDB.addCajaMovimiento({
-      fecha: today(), tipo: form.tipo, codigo, categoria: form.categoria,
-      descripcion: form.descripcion || form.tipo,
-      monto: Math.abs(parseFloat(form.monto)), usuario: user.email,
-    });
-    mockDB.addAuditLog(user.email, `Registro de movimiento: ${form.tipo} (${form.categoria}) ${formatCurrency(form.monto)}`, 'Caja', form.descripcion);
-    toast.success('Movimiento registrado');
-    setShowModal(false);
-    setForm({ tipo: 'Ingreso en Caja', categoria: 'Blanco', monto: '', descripcion: '' });
-    loadData();
-  };
+  const cur = agrupar(ventas.filter((v) => isInRange(v.fecha, curMonth.start, curMonth.end)));
+  const prev = agrupar(ventas.filter((v) => isInRange(v.fecha, prevMonth.start, prevMonth.end)));
+  const totalCur = TYPES.reduce((s, t) => s + cur.totales[t], 0);
+  const totalPrev = TYPES.reduce((s, t) => s + prev.totales[t], 0);
 
-  const alertas = [];
-  if (stats.saldoBlanco < config.limites_caja.minimo) alertas.push({ type: 'warning', text: `El saldo Blanco esta por debajo del minimo recomendado (${formatCurrency(config.limites_caja.minimo)})` });
-  if (stats.ingresosHoy === 0 && stats.egresosHoy === 0) alertas.push({ type: 'info', text: 'No hay movimientos registrados hoy' });
+  const saldoBlanco = estado.Blanco || 0;
+  const saldoNegro = estado.Negro || 0;
+  const saldoFisico = saldoBlanco + saldoNegro;
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}><div className="spinner" /></div>;
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <div className="spinner" />
+    </div>
+  );
 
   return (
-    <div>
-      {/* Alertas */}
-      {alertas.map((a, i) => (
-        <div key={i} className={`alert alert-${a.type}`}>{a.text}</div>
-      ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
 
-      {/* Stats Principales */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <h3>Ventas Totales</h3>
-          <div className="value">{formatCurrency(stats.totalVentas)}</div>
-          <div className="subtitle">Blanco + Negro + Tarjeta</div>
-        </div>
-        <div className="stat-card" style={{ borderLeft: '3px solid #facc15' }}>
-          <h3>Caja Blanco</h3>
-          <div className="value" style={{ color: '#facc15' }}>{formatCurrency(stats.saldoBlanco)}</div>
-          <div className="subtitle">Saldo declarado</div>
-        </div>
-        <div className="stat-card" style={{ borderLeft: '3px solid #6b7280' }}>
-          <h3>Caja Negro</h3>
-          <div className="value" style={{ color: '#9ca3af' }}>{formatCurrency(stats.saldoNegro)}</div>
-          <div className="subtitle">Saldo no declarado</div>
-        </div>
-        <div className="stat-card success">
-          <h3>Ingresos Hoy</h3>
-          <div className="value">{formatCurrency(stats.ingresosHoy)}</div>
-          <div className="subtitle">Movimientos entrantes</div>
-        </div>
-        <div className="stat-card danger">
-          <h3>Egresos Hoy</h3>
-          <div className="value">{formatCurrency(stats.egresosHoy)}</div>
-          <div className="subtitle">Movimientos salientes</div>
-        </div>
-      </div>
-
-      {/* Montos por Tipo (Totales) */}
-      <div className="stats-grid">
-        <div className="stat-card" style={{ borderLeftColor: '#d1d5db' }}>
-          <h3>Blanco (declarada)</h3>
-          <div className="value">{formatCurrency(stats.totalBlancoVentas)}</div>
-          <div className="subtitle">Efectivo declarado - Total historico</div>
-        </div>
-        <div className="stat-card" style={{ borderLeftColor: '#818cf8' }}>
-          <h3>Negro (no declarada)</h3>
-          <div className="value">{formatCurrency(stats.totalNegroVentas)}</div>
-          <div className="subtitle">Efectivo no declarado - Total historico</div>
-        </div>
-        <div className="stat-card info">
-          <h3>Tarjeta</h3>
-          <div className="value">{formatCurrency(stats.totalTarjetaVentas)}</div>
-          <div className="subtitle">Credito / Debito - Total historico</div>
-        </div>
-      </div>
-
-      {/* Montos por Tipo (Hoy) */}
-      <div className="stats-grid">
-        <div className="stat-card" style={{ borderLeftColor: '#d1d5db', opacity: 0.8 }}>
-          <h3>Blanco Hoy</h3>
-          <div className="value">{formatCurrency(stats.blancoHoy)}</div>
-        </div>
-        <div className="stat-card" style={{ borderLeftColor: '#818cf8', opacity: 0.8 }}>
-          <h3>Negro Hoy</h3>
-          <div className="value">{formatCurrency(stats.negroHoy)}</div>
-        </div>
-        <div className="stat-card info" style={{ opacity: 0.8 }}>
-          <h3>Tarjeta Hoy</h3>
-          <div className="value">{formatCurrency(stats.tarjetaHoy)}</div>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="charts-grid">
-        <div className="card">
-          <div className="card-header"><h2>Ventas - Ultimos 7 dias</h2></div>
-          <div className="chart-container">
-            {chartData && (
-              <Bar data={chartData} options={{
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15 } } },
-                scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } },
-              }} />
-            )}
+      {/* ============================================ */}
+      {/* SECCION 1: VENTAS                           */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <ShoppingBag size={20} color="#fff" />
           </div>
-        </div>
-        <div className="card">
-          <div className="card-header"><h2>Distribucion Total por Tipo</h2></div>
-          <div className="chart-container">
-            {pieData && (
-              <Doughnut data={pieData} options={{
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 15 } } },
-                cutout: '65%',
-              }} />
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Ventas por Tipo de Tarjeta */}
-      <div className="card">
-        <div className="card-header"><h2><CreditCard size={18} /> Ventas por Tipo</h2></div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-          {/* Efectivo */}
           <div>
-            <h3 style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Efectivo</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#d1d5db', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontWeight: '600', fontSize: '0.9rem' }}>Moneda Local (Blanco)</span>
-                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Valor 0</span>
-                <span style={{ fontWeight: '700', color: '#d1d5db' }}>{formatCurrency(stats.totalBlancoVentas)}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#818cf8', flexShrink: 0 }} />
-                <span style={{ flex: 1, fontWeight: '600', fontSize: '0.9rem' }}>Moneda Local 1 (Negro)</span>
-                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Valor 2</span>
-                <span style={{ fontWeight: '700', color: '#818cf8' }}>{formatCurrency(stats.totalNegroVentas)}</span>
-              </div>
-            </div>
-          </div>
-          {/* Tarjetas */}
-          <div>
-            <h3 style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Tarjetas</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {cardBrandData.length === 0 && <div style={{ color: '#6b7280', fontSize: '0.85rem', padding: '0.5rem' }}>Sin ventas con tarjeta</div>}
-              {cardBrandData.map((item) => (
-                <div key={item.brand} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.75rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: CARD_BRAND_COLORS[item.brand] || '#6b7280', flexShrink: 0 }} />
-                  <span style={{ flex: 1, fontWeight: '600', fontSize: '0.9rem' }}>{item.brand}</span>
-                  <span style={{ fontWeight: '700', color: '#d4af37' }}>{formatCurrency(item.monto)}</span>
-                </div>
-              ))}
-            </div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Resumen de Ventas</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Consolidado del mes actual ({curMonth.label})</p>
           </div>
         </div>
-      </div>
 
-      {/* Caja por Tipo */}
-      <div className="card">
-        <div className="card-header"><h2><Wallet size={18} /> Caja por Tipo</h2></div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-          {cajaTypeData.map((item) => (
-            <div key={item.code} style={{ padding: '1rem', background: item.bg, borderRadius: '10px', border: `1px solid ${item.color}33` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: item.color }} />
-                <span style={{ fontWeight: '700', fontSize: '0.95rem', color: item.color }}>{item.label}</span>
-                <span style={{ fontSize: '0.75rem', color: '#9ca3af', marginLeft: 'auto' }}>Codigo {item.code}</span>
-              </div>
-              <div style={{ fontSize: '1.2rem', fontWeight: '700', color: item.color }}>{formatCurrency(item.monto)}</div>
-              <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>{item.count} movimientos</div>
-            </div>
-          ))}
-          {cajaTypeData.length === 0 && <div style={{ color: '#6b7280', padding: '1rem', textAlign: 'center' }}>Sin movimientos de caja</div>}
-        </div>
-      </div>
-
-      {/* Recent Movements */}
-      <div className="card">
-        <div className="card-header">
-          <h2>Últimos Movimientos</h2>
-          <div className="btn-group">
-            <button className="btn btn-primary" onClick={() => setShowModal(true)}>+ Registrar</button>
-            <button className="btn btn-outline" onClick={() => navigate('/caja')}>Ver todo</button>
+        {/* Total General */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+          border: '1px solid rgba(212,175,55,0.2)',
+          borderRadius: '16px', padding: '1.5rem 2rem', marginBottom: '1.25rem',
+          position: 'relative', overflow: 'hidden',
+        }}>
+          <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.03, fontWeight: '900' }}>$</div>
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>
+            Total Ventas {curMonth.label}
           </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem' }}>
+            <span style={{ fontSize: '2.5rem', fontWeight: '900', color: '#d4af37', letterSpacing: '-0.02em' }}>
+              {formatCurrency(totalCur)}
+            </span>
+            {totalPrev > 0 && (() => {
+              const diff = totalCur - totalPrev;
+              const pct = ((diff / totalPrev) * 100).toFixed(0);
+              return (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                  fontSize: '0.85rem', fontWeight: '700',
+                  color: diff >= 0 ? '#10b981' : '#ef4444',
+                  background: diff >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                  padding: '0.25rem 0.75rem', borderRadius: '20px',
+                }}>
+                  {diff >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+                  {diff >= 0 ? '+' : ''}{pct}%
+                </span>
+              );
+            })()}
+          </div>
+          {totalPrev > 0 && (
+            <div style={{ fontSize: '0.8rem', color: '#6b7280', marginTop: '0.5rem' }}>
+              Mes anterior: {formatCurrency(totalPrev)}
+            </div>
+          )}
         </div>
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr><th>Fecha</th><th>Tipo</th><th>Cat.</th><th>Descripcion</th><th className="amount">Monto</th><th className="amount">Saldo</th></tr>
-            </thead>
-            <tbody>
-              {movimientos.length === 0 ? (
-                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af' }}>No hay movimientos registrados</td></tr>
-              ) : movimientos.map((m) => (
-                <tr key={m.id}>
-                  <td>{m.fecha}</td>
-                  <td>
-                    <span className={`badge ${m.codigo === 502 ? 'badge-success' : m.codigo === 501 ? 'badge-danger' : 'badge-warning'}`}>
-                      {m.tipo}
-                    </span>
-                  </td>
-                  <td>
-                    <span style={{
-                      display: 'inline-block', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600',
-                      background: m.categoria === 'Blanco' ? 'rgba(250,204,21,0.15)' : 'rgba(156,163,175,0.15)',
-                      color: m.categoria === 'Blanco' ? '#facc15' : '#9ca3af',
+
+        {/* Cards por tipo */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+          {TYPES.map((tipo) => {
+            const cfg = TIPO_CFG[tipo];
+            const valCur = cur.totales[tipo];
+            const valPrev = prev.totales[tipo];
+            const diff = valCur - valPrev;
+            const pct = valPrev > 0 ? ((diff / valPrev) * 100).toFixed(0) : null;
+            const subItems = Object.entries(cur.porBanco[tipo]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+
+            return (
+              <div key={tipo} style={{
+                background: cfg.gradient,
+                borderRadius: '14px', padding: '1.25rem',
+                border: '1px solid rgba(255,255,255,0.06)',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+                cursor: 'default',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>{cfg.icon}</span>
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '0.85rem', color: cfg.color, lineHeight: '1.2' }}>{cfg.label}</div>
+                      <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>{cfg.desc}</div>
+                    </div>
+                  </div>
+                  {pct !== null && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '0.15rem',
+                      fontSize: '0.7rem', fontWeight: '700',
+                      color: diff >= 0 ? '#10b981' : '#ef4444',
+                      background: diff >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                      padding: '0.15rem 0.5rem', borderRadius: '12px',
                     }}>
-                      {m.categoria || 'Blanco'}
-                    </span>
-                  </td>
-                  <td>{m.descripcion}</td>
-                  <td className="amount" style={{ color: m.codigo === 502 ? '#10b981' : '#ef4444' }}>
-                    {m.codigo === 502 ? '+' : '-'}{formatCurrency(m.monto)}
-                  </td>
-                  <td className="amount">{formatCurrency(m.saldo_nuevo)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                      {diff >= 0 ? '+' : ''}{pct}%
+                    </div>
+                  )}
+                </div>
 
-      {/* Modal */}
-      <div className={`modal-overlay ${showModal ? 'active' : ''}`} onClick={() => setShowModal(false)}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
-          <h2>Registrar Movimiento</h2>
-          <form onSubmit={handleRegisterMovement}>
-            <div className="form-group">
-              <label>Categoria</label>
-              <select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
-                <option value="Blanco">Blanco (Declarado)</option>
-                <option value="Negro">Negro (No declarado)</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Tipo de Movimiento</label>
-              <select value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value })}>
-                <option value="Ingreso en Caja">Ingreso en Caja</option>
-                <option value="Egreso en Caja">Egreso en Caja</option>
-                <option value="Retiro de Caja">Retiro de Caja</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Monto</label>
-              <input type="number" value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} placeholder="0" min="0" required />
-            </div>
-            <div className="form-group">
-              <label>Descripción</label>
-              <input type="text" value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} placeholder="Descripción del movimiento" />
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button type="submit" className="btn btn-primary">Registrar</button>
-            </div>
-          </form>
+                <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1', marginBottom: '0.25rem' }}>
+                  {formatCurrency(valCur)}
+                </div>
+
+                {valPrev > 0 && (
+                  <div style={{ fontSize: '0.7rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                    Ant.: {formatCurrency(valPrev)}
+                  </div>
+                )}
+
+                {subItems.length > 0 && (
+                  <div style={{ marginTop: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.6rem' }}>
+                    {subItems.map(([brand, monto]) => (
+                      <div key={brand} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.15rem 0' }}>
+                        <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{brand}</span>
+                        <span style={{ fontSize: '0.75rem', color: cfg.color, fontWeight: '600' }}>{formatCurrency(monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {subItems.length === 0 && (
+                  <div style={{ fontSize: '0.7rem', color: '#4b5563', marginTop: '0.5rem', fontStyle: 'italic' }}>Sin registros</div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </section>
+
+      {/* ============================================ */}
+      {/* SECCION 2: CAJA - SALDO FISICO              */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #facc15 0%, #f59e0b 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Wallet size={20} color="#000" />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Caja</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Efectivo físico del último día cerrado ({format(subDays(new Date(), 1), 'dd/MM/yyyy')})</p>
+          </div>
+        </div>
+
+        {/* Card principal: Saldo al abrir */}
+        <div style={{
+          background: 'linear-gradient(135deg, #854d0e 0%, #a16207 40%, #ca8a04 100%)',
+          borderRadius: '16px', padding: '2rem 2.5rem',
+          border: '1px solid rgba(250,204,21,0.3)',
+          position: 'relative', overflow: 'hidden',
+        }}>
+          <div style={{ position: 'absolute', top: '-30px', right: '-30px', fontSize: '8rem', opacity: 0.04, fontWeight: '900' }}>$</div>
+          <div style={{ fontSize: '0.8rem', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
+            Saldo al Abrir Caja
+          </div>
+          <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#fff', lineHeight: '1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+            {formatCurrency(saldoFisico)}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
+            Efectivo disponible en caja del día de hoy
+          </div>        </div>
+
+        {/* Desplegable: Desglose */}
+        <div style={{ marginTop: '0.75rem' }}>
+          <button
+            onClick={() => setShowCajaDetail(!showCajaDetail)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '10px', padding: '0.75rem 1rem',
+              cursor: 'pointer', color: '#d4af37',
+              fontSize: '0.85rem', fontWeight: '600',
+              width: '100%', textAlign: 'left',
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.06)'}
+            onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.03)'}
+          >
+            {showCajaDetail ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            Ver desglose de caja
+          </button>
+
+          {showCajaDetail && (() => {
+            const hoy = format(new Date(), 'yyyy-MM-dd');
+            const cajaHoy = caja.filter((m) => m.fecha === hoy);
+            const ventasHoy = ventas.filter((v) => v.fecha === hoy);
+
+            const ingHoy = cajaHoy.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
+            const egrHoy = cajaHoy.filter((m) => m.codigo === 501).reduce((s, m) => s + m.monto, 0);
+            const retHoy = cajaHoy.filter((m) => m.codigo === 503).reduce((s, m) => s + m.monto, 0);
+            const vBlancoHoy = ventasHoy.filter((v) => classificarVenta(v) === 'blanco').reduce((s, v) => s + v.monto, 0);
+            const vNegroHoy = ventasHoy.filter((v) => classificarVenta(v) === 'negro').reduce((s, v) => s + v.monto, 0);
+
+            // Saldo de ayer = saldo actual cacheado menos el neto de los movimientos de hoy
+            const netoHoy = ingHoy + vBlancoHoy + vNegroHoy - egrHoy - retHoy;
+            const saldoAyerTotal = saldoFisico - netoHoy;
+            const totalHoy = saldoAyerTotal + netoHoy;
+
+            const filas = [
+              { code: 500, label: 'Apertura', value: saldoAyerTotal, color: '#facc15', sign: 1 },
+              { code: 502, label: 'Ingresos', value: ingHoy, color: '#10b981', sign: 1 },
+              { code: 'VB', label: 'Ventas Blanco', value: vBlancoHoy, color: '#e2e8f0', sign: 1 },
+              { code: 'VN', label: 'Ventas Negro', value: vNegroHoy, color: '#a78bfa', sign: 1 },
+              { code: 501, label: 'Egresos', value: egrHoy, color: '#ef4444', sign: -1 },
+              { code: 503, label: 'Retiros', value: retHoy, color: '#f97316', sign: -1 },
+            ].filter((f) => f.value > 0);
+
+            const movsByCode = {};
+            cajaHoy.filter((m) => m.codigo !== 500).forEach((m) => { if (!movsByCode[m.codigo]) movsByCode[m.codigo] = []; movsByCode[m.codigo].push(m); });
+
+            return (
+              <div style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '12px', padding: '1rem 1.25rem',
+                marginTop: '0.5rem',
+                fontFamily: 'var(--font-mono, monospace)',
+              }}>
+
+                {/* SALDO ANTERIOR */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '0.6rem 0.75rem', borderRadius: '8px',
+                  background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.15)',
+                  marginBottom: '0.5rem',
+                }}>
+                  <span style={{ fontSize: '0.78rem', color: '#a78bfa', fontWeight: '700' }}>
+                    🏦 CAJA DÍA {format(subDays(new Date(), 1), 'dd/MM/yy')}
+                  </span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: '900', color: '#a78bfa' }}>
+                    {formatCurrency(saldoAyerTotal)}
+                  </span>
+                </div>
+
+                {/* SEPARADOR */}
+                <div style={{ borderTop: '1px dashed rgba(255,255,255,0.08)', margin: '0.35rem 0' }} />
+
+                {/* TITULO MOVIMIENTOS */}
+                <div style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0 0.5rem', marginBottom: '0.25rem' }}>
+                  Movimientos del {format(new Date(), 'dd/MM/yy')}
+                </div>
+
+                {/* FILAS */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                  {filas.map((f) => (
+                    <div key={f.code}>
+                      <div style={{
+                        display: 'grid', gridTemplateColumns: '32px 1fr auto',
+                        gap: '0.5rem', alignItems: 'center',
+                        padding: '0.4rem 0.5rem',
+                        borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      }}>
+                        <span style={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textAlign: 'center' }}>
+                          {String(f.code).padStart(2, '0')}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: '#d1d5db', fontWeight: '500' }}>
+                          {f.label}
+                        </span>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '800', color: f.color, textAlign: 'right' }}>
+                          {f.sign > 0 ? '+' : '-'}{formatCurrency(f.value)}
+                        </span>
+                      </div>
+                      {/* Items individuales */}
+                      {movsByCode[f.code] && movsByCode[f.code].map((m) => (
+                        <div key={m.id} style={{
+                          display: 'grid', gridTemplateColumns: '32px 1fr auto',
+                          gap: '0.5rem', alignItems: 'center',
+                          padding: '0.2rem 0.5rem 0.2rem 1.5rem',
+                        }}>
+                          <span></span>
+                          <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>• {m.descripcion || m.tipo}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#6b7280', textAlign: 'right' }}>{formatCurrency(m.monto)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+
+                {/* TOTAL */}
+                <div style={{ borderTop: '2px solid rgba(255,255,255,0.1)', margin: '0.25rem 0 0' }} />
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '32px 1fr auto',
+                  gap: '0.5rem', alignItems: 'center',
+                  padding: '0.5rem 0.5rem',
+                }}>
+                  <span></span>
+                  <span style={{ fontSize: '0.8rem', color: '#d4af37', fontWeight: '800' }}>TOTAL CAJA FÍSICO</span>
+                  <span style={{ fontSize: '1rem', fontWeight: '900', color: '#fbbf24', textAlign: 'right' }}>
+                    {formatCurrency(totalHoy)}
+                  </span>
+                </div>
+
+                {filas.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: '1rem', color: '#4b5563', fontSize: '0.78rem', fontStyle: 'italic' }}>
+                    Sin movimientos registrados
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      </section>
     </div>
   );
 }
