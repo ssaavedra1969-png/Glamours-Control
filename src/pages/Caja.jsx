@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { Plus, Download, Trash2, Edit3, ChevronDown, ChevronRight, Wallet, Filter, RefreshCw } from 'lucide-react';
 import mockDB from '../services/firestoreDB';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +25,8 @@ export default function Caja() {
   const [cierreForm, setCierreForm] = useState({ saldo_real_blanco: '', saldo_real_negro: '', observaciones: '' });
   const [stats, setStats] = useState({ saldo_blanco: 0, saldo_negro: 0, ingresos_hoy: 0, egresos_hoy: 0 });
   const [expandedDates, setExpandedDates] = useState({});
+  const [ventasDelDia, setVentasDelDia] = useState({});
+  const [ventasExpanded, setVentasExpanded] = useState({});
 
   useEffect(() => { loadData(); }, [dateFrom, dateTo]);
 
@@ -33,6 +35,7 @@ export default function Caja() {
     if (filter === 'Ingreso') result = result.filter((m) => m.codigo === 502);
     else if (filter === 'Egreso') result = result.filter((m) => m.codigo === 501);
     else if (filter === 'Retiro') result = result.filter((m) => m.codigo === 503);
+    else if (filter === 'En caja') result = result.filter((m) => m.codigo === 500);
     if (filterCat === 'Blanco') result = result.filter((m) => m.categoria === 'Blanco');
     else if (filterCat === 'Negro') result = result.filter((m) => m.categoria === 'Negro');
     setFiltered(result);
@@ -41,15 +44,24 @@ export default function Caja() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [data, saldos, hoyData] = await Promise.all([
+      const [data, saldos, hoyData, ventas] = await Promise.all([
         mockDB.getCaja(dateFrom || undefined, dateTo || undefined),
         mockDB.getEstadoSaldos(),
         mockDB.getCaja(today(), today()),
+        mockDB.getVentas(dateFrom || undefined, dateTo || undefined),
       ]);
       setMovimientos(data);
       const ingresos = hoyData.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
-      const egresos = hoyData.filter((m) => [501, 503].includes(m.codigo)).reduce((s, m) => s + m.monto, 0);
-      setStats({ saldo_blanco: saldos.Blanco, saldo_negro: saldos.Negro, ingresos_hoy: ingresos, egresos_hoy: egresos });
+      const retiros = hoyData.filter((m) => m.codigo === 503).reduce((s, m) => s + m.monto, 0);
+      setStats({ saldo_blanco: saldos.Blanco, saldo_negro: saldos.Negro, ingresos_hoy: ingresos, retiros_hoy: retiros });
+      const ventasPorDia = {};
+      ventas.forEach((v) => {
+        if (v.medio_pago === 'Efectivo') {
+          if (!ventasPorDia[v.fecha]) ventasPorDia[v.fecha] = [];
+          ventasPorDia[v.fecha].push(v);
+        }
+      });
+      setVentasDelDia(ventasPorDia);
     } catch { toast.error('Error al cargar caja'); }
     finally { setLoading(false); }
   };
@@ -66,7 +78,7 @@ export default function Caja() {
   const dayStats = (date) => {
     const items = groupedByDate[date] || [];
     const ingresos = items.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
-    const egresos = items.filter((m) => [501, 503].includes(m.codigo)).reduce((s, m) => s + m.monto, 0);
+    const egresos = items.filter((m) => m.codigo === 501).reduce((s, m) => s + m.monto, 0);
     const blanco = items.filter((m) => m.categoria === 'Blanco').reduce((s, m) => s + (m.codigo === 502 ? m.monto : -m.monto), 0);
     const negro = items.filter((m) => m.categoria === 'Negro').reduce((s, m) => s + (m.codigo === 502 ? m.monto : -m.monto), 0);
     return { count: items.length, ingresos, egresos, blanco, negro };
@@ -148,10 +160,10 @@ export default function Caja() {
   };
 
   const handleExport = (type) => {
-    const data = filtered.map((m) => ({ Fecha: m.fecha, Tipo: m.tipo, Categoria: m.categoria, Descripcion: m.descripcion, Monto: m.monto, Saldo: m.saldo_nuevo, Origen: m.origen }));
+    const data = filtered.map((m) => ({ Fecha: m.fecha, Tipo: `${m.tipo} (${m.codigo})`, Descripcion: m.descripcion, Monto: m.monto, Saldo: m.saldo_nuevo, Origen: m.origen }));
     if (type === 'csv') exportToCSV(data, `caja_${today()}`);
     else if (type === 'xlsx') exportToExcel(data, `caja_${today()}`);
-    else if (type === 'pdf') exportToPDF(data, [{ key: 'Fecha', header: 'Fecha' }, { key: 'Tipo', header: 'Tipo' }, { key: 'Categoria', header: 'Cat.' }, { key: 'Descripcion', header: 'Descripcion' }, { key: 'Monto', header: 'Monto', format: 'currency' }, { key: 'Saldo', header: 'Saldo', format: 'currency' }], 'Libro de Caja - GLAMOURS', `caja_${today()}`);
+    else if (type === 'pdf') exportToPDF(data, [{ key: 'Fecha', header: 'Fecha' }, { key: 'Tipo', header: 'Tipo' }, { key: 'Descripcion', header: 'Descripcion' }, { key: 'Monto', header: 'Monto', format: 'currency' }, { key: 'Saldo', header: 'Saldo', format: 'currency' }], 'Libro de Caja - GLAMOURS', `caja_${today()}`);
     toast.success(`Exportado como ${type.toUpperCase()}`);
   };
 
@@ -250,18 +262,18 @@ export default function Caja() {
           </div>
 
           <div style={{
-            background: 'linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%)',
+            background: 'linear-gradient(135deg, #4a1a00 0%, #7c2d12 100%)',
             borderRadius: '14px', padding: '1.25rem',
             border: '1px solid rgba(255,255,255,0.06)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: '1.2rem' }}>📉</span>
+              <span style={{ fontSize: '1.2rem' }}>💸</span>
               <div>
-                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fca5a5', lineHeight: '1.2' }}>Egresos Hoy</div>
-                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>501/503 - Egreso/Retiro</div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fdba74', lineHeight: '1.2' }}>Retiro de Caja</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>503 - Efectivo Retirado</div>
               </div>
             </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#ef4444', lineHeight: '1' }}>{formatCurrency(stats.egresos_hoy)}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fb923c', lineHeight: '1' }}>{formatCurrency(stats.retiros_hoy)}</div>
           </div>
         </div>
       </section>
@@ -302,9 +314,9 @@ export default function Caja() {
           </div>
           <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)' }} />
           <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-            {['todos', 'Ingreso', 'Egreso', 'Retiro'].map((f) => (
+            {['todos', 'En caja', 'Ingreso', 'Egreso', 'Retiro'].map((f) => (
               <button key={f} className={`btn btn-outline btn-sm ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)} style={{ fontSize: '0.75rem' }}>
-                {f === 'todos' ? 'Todos' : f + 's'}
+                {f === 'todos' ? 'Todos' : f === 'En caja' ? f : f + 's'}
               </button>
             ))}
           </div>
@@ -416,57 +428,127 @@ export default function Caja() {
                     padding: '0 1.25rem 1.25rem',
                     borderTop: '1px solid rgba(255,255,255,0.06)',
                   }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Tipo</th>
-                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Categoria</th>
-                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Descripcion</th>
-                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Origen</th>
-                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Monto</th>
-                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Saldo</th>
-                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(groupedByDate[date] || []).map((m) => (
-                          <tr key={m.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
-                            <td style={{ padding: '0.6rem 0.5rem' }}>
-                              <span style={{
-                                fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px',
-                                background: m.codigo === 502 ? 'rgba(16,185,129,0.12)' : m.codigo === 501 ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
-                                color: m.codigo === 502 ? '#10b981' : m.codigo === 501 ? '#ef4444' : '#f97316',
-                              }}>
-                                {m.tipo}
-                              </span>
-                            </td>
-                            <td style={{ padding: '0.6rem 0.5rem' }}>
-                              <span style={{
-                                fontSize: '0.72rem', fontWeight: '600', padding: '0.15rem 0.5rem', borderRadius: '4px',
-                                background: m.categoria === 'Blanco' ? 'rgba(250,204,21,0.12)' : 'rgba(156,163,175,0.12)',
-                                color: m.categoria === 'Blanco' ? '#facc15' : '#9ca3af',
-                              }}>
-                                {m.categoria || 'Blanco'}
-                              </span>
-                            </td>
-                            <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{m.descripcion}</td>
-                            <td style={{ padding: '0.6rem 0.5rem' }}>
-                              <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', background: 'rgba(255,255,255,0.05)', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>{m.origen}</span>
-                            </td>
-                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: m.codigo === 502 ? '#10b981' : '#ef4444', fontWeight: '800', fontSize: '0.85rem' }}>
-                              {m.codigo === 502 ? '+' : '-'}{formatCurrency(m.monto)}
-                            </td>
-                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#d4af37', fontWeight: '700', fontSize: '0.82rem' }}>{formatCurrency(m.saldo_nuevo)}</td>
-                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>
-                              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
-                                <button className="btn-icon" onClick={() => openEdit(m)} title="Editar"><Edit3 size={14} /></button>
-                                <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar"><Trash2 size={14} /></button>
+                    {(() => {
+                      const items = groupedByDate[date] || [];
+                      const regulares = items.filter((m) => m.codigo !== 503).sort((a, b) => {
+                        const order = { 500: 0, 502: 1, 501: 2 };
+                        return (order[a.codigo] ?? 9) - (order[b.codigo] ?? 9);
+                      });
+                      const retiros = items.filter((m) => m.codigo === 503);
+                      const ventasEfectivo = ventasDelDia[date] || [];
+                      const blancas = ventasEfectivo.filter((v) => v.categoria === 'Blanco');
+                      const negras = ventasEfectivo.filter((v) => v.categoria === 'Negro');
+                      const totalVentasEfectivo = ventasEfectivo.reduce((s, v) => s + v.monto, 0);
+                      const totalBlancas = blancas.reduce((s, v) => s + v.monto, 0);
+                      const totalNegras = negras.reduce((s, v) => s + v.monto, 0);
+                      return (
+                        <>
+                          {/* Movimientos regulares */}
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                              <tr>
+                                <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Tipo</th>
+                                <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Descripcion</th>
+                                <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Origen</th>
+                                <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Monto</th>
+                                <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Saldo</th>
+                                <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {regulares.map((m) => (
+                                <Fragment key={m.id}>
+                                  <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <td style={{ padding: '0.6rem 0.5rem' }}>
+                                      <span style={{
+                                        fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px',
+                                        background: m.codigo === 501 ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)',
+                                        color: m.codigo === 501 ? '#ef4444' : '#10b981',
+                                      }}>
+                                        {m.tipo} ({m.codigo})
+                                      </span>
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{m.descripcion}</td>
+                                    <td style={{ padding: '0.6rem 0.5rem' }}>
+                                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', background: 'rgba(255,255,255,0.05)', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>{m.origen}</span>
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: m.codigo === 501 ? '#ef4444' : '#10b981', fontWeight: '800', fontSize: '0.85rem' }}>
+                                      {m.codigo === 502 && totalVentasEfectivo > 0 ? `+${formatCurrency(totalVentasEfectivo)}` : `${m.codigo === 501 ? '-' : '+'}${formatCurrency(m.monto)}`}
+                                    </td>
+                                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#d4af37', fontWeight: '700', fontSize: '0.82rem' }}>{formatCurrency(m.saldo_nuevo)}</td>
+                                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>
+                                      <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                                        {m.codigo === 502 && ventasEfectivo.length > 0 && (
+                                          <button className="btn-icon" onClick={() => setVentasExpanded((p) => ({ ...p, [`${date}_502`]: !p[`${date}_502`] }))} title="Ver ventas en efectivo" style={{ color: '#10b981', background: 'rgba(16,185,129,0.1)', borderRadius: '6px', fontSize: '0.6rem', padding: '0.2rem 0.5rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                            {ventasExpanded[`${date}_502`] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                                            {ventasEfectivo.length} venta{ventasEfectivo.length > 1 ? 's' : ''}
+                                          </button>
+                                        )}
+                                        <button className="btn-icon" onClick={() => openEdit(m)} title="Editar"><Edit3 size={14} /></button>
+                                        <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar"><Trash2 size={14} /></button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                  {/* Desplegable ventas en efectivo */}
+                                  {m.codigo === 502 && ventasEfectivo.length > 0 && ventasExpanded[`${date}_502`] && (
+                                    <tr>
+                                      <td colSpan="6" style={{ padding: '0' }}>
+                                        <div style={{
+                                          margin: '0.25rem 0 0.5rem 1rem',
+                                          background: 'linear-gradient(135deg, #0c1a3a 0%, #0f2340 100%)',
+                                          border: '1px solid rgba(59,130,246,0.2)',
+                                          borderRadius: '8px',
+                                          padding: '0.6rem 0.75rem',
+                                        }}>
+                                          {blancas.length > 0 && (
+                                            <div style={{ fontSize: '0.72rem', color: '#e5e7eb', padding: '0.2rem 0', display: 'flex', justifyContent: 'space-between', borderBottom: negras.length > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                                              <span><span style={{ color: '#facc15', fontWeight: '600' }}>Blanco</span> ({blancas.length} venta{blancas.length > 1 ? 's' : ''})</span>
+                                              <span style={{ color: '#10b981', fontWeight: '700' }}>+{formatCurrency(totalBlancas)}</span>
+                                            </div>
+                                          )}
+                                          {negras.length > 0 && (
+                                            <div style={{ fontSize: '0.72rem', color: '#e5e7eb', padding: '0.2rem 0', display: 'flex', justifyContent: 'space-between' }}>
+                                              <span><span style={{ color: '#9ca3af', fontWeight: '600' }}>Negro</span> ({negras.length} venta{negras.length > 1 ? 's' : ''})</span>
+                                              <span style={{ color: '#10b981', fontWeight: '700' }}>+{formatCurrency(totalNegras)}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
+                              ))}
+                            </tbody>
+                          </table>
+
+                          {/* Retiros informativos (503) */}
+                          {retiros.length > 0 && (
+                            <div style={{
+                              marginTop: '1rem',
+                              background: 'linear-gradient(135deg, #0c1a3a 0%, #0f2340 100%)',
+                              border: '1px solid rgba(59,130,246,0.2)',
+                              borderRadius: '10px',
+                              padding: '0.6rem 0.75rem',
+                              boxShadow: '0 2px 12px rgba(59,130,246,0.08)',
+                            }}>
+                              <div style={{ fontSize: '0.6rem', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.3rem' }}>
+                                💸 Retiro de Caja
                               </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                              {retiros.map((m) => (
+                                <div key={m.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.35rem 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                  <span style={{ fontSize: '0.82rem', color: '#e5e7eb', flex: 1 }}>{m.descripcion}</span>
+                                  <span style={{ fontSize: '0.88rem', fontWeight: '800', color: '#fb923c', marginRight: '0.75rem' }}>{formatCurrency(m.monto)}</span>
+                                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                                    <button className="btn-icon" onClick={() => openEdit(m)} title="Editar" style={{ color: '#94a3b8' }}><Edit3 size={13} /></button>
+                                    <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar" style={{ color: '#94a3b8' }}><Trash2 size={13} /></button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

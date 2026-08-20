@@ -111,7 +111,7 @@ class FirestoreDB {
     const newDocs = [];
     for (const item of newSorted) {
       const cat = item.categoria || 'Blanco';
-      const mult = [500, 502].includes(item.codigo) ? 1 : -1;
+      const mult = item.codigo === 502 ? 1 : item.codigo === 503 ? 0 : -1;
       const anterior = saldos[cat];
       saldos[cat] += item.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
