@@ -15,7 +15,7 @@ async function getAllRaw(collectionName) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-// Calcula saldos ordenando por creado (cronológico) y aplicando piso en 0 por categoria.
+// Calcula saldos ordenando por creado (cronológico) por categoria.
 function computeSaldos(list) {
   const sorted = [...list].sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
   const saldos = { Blanco: 0, Negro: 0 };
@@ -23,7 +23,6 @@ function computeSaldos(list) {
     const cat = m.categoria || 'Blanco';
     const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
     saldos[cat] += m.monto * mult;
-    if (saldos[cat] < 0) saldos[cat] = 0;
   }
   return saldos;
 }
@@ -116,7 +115,6 @@ class FirestoreDB {
       const mult = item.codigo === 501 ? -1 : item.codigo === 503 ? 0 : 1;
       const anterior = saldos[cat];
       saldos[cat] += item.monto * mult;
-      if (saldos[cat] < 0) saldos[cat] = 0;
       newDocs.push({
         fecha: item.fecha, tipo: item.tipo, codigo: item.codigo,
         categoria: cat, descripcion: item.descripcion, monto: item.monto,
@@ -205,7 +203,7 @@ class FirestoreDB {
       }
     }
     if (count % 500 !== 0) await batch.commit();
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 4 });
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 5 });
   }
 
   async getVentas(fechaInicio, fechaFin) {
@@ -384,15 +382,14 @@ class FirestoreDB {
 
   async recalcularSaldosCompletos() {
     const allSnap = await getDocs(col('caja'));
-    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
     const saldos = { Blanco: 0, Negro: 0 };
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
       const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
       saldos[cat] += m.monto * mult;
-      if (saldos[cat] < 0) saldos[cat] = 0;
     }
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 4 });
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 5 });
     return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length, updated: 0 };
   }
 

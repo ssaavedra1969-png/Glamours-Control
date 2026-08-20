@@ -66,10 +66,10 @@ export default function Caja() {
       });
       setVentasDelDia(ventasPorDia);
 
-      const SALDO_VERSION = 4;
+      const SALDO_VERSION = 5;
       if ((saldos._version || 0) < SALDO_VERSION) {
         const result = await mockDB.recalcularSaldosCompletos();
-        toast.success(`Saldos recalculados (${result.updated} registros)`, { duration: 4000 });
+        toast.success(`Saldos recalculados (${result.total} registros)`, { duration: 4000 });
         setStats((prev) => ({ ...prev, saldo_blanco: result.blanco, saldo_negro: result.negro }));
       }
     } catch { toast.error('Error al cargar caja'); }
