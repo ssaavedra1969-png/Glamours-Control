@@ -21,7 +21,7 @@ function computeSaldos(list) {
   const saldos = { Blanco: 0, Negro: 0 };
   for (const m of sorted) {
     const cat = m.categoria || 'Blanco';
-    const mult = m.codigo === 502 ? 1 : m.codigo === 503 ? 0 : -1;
+    const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
     saldos[cat] += m.monto * mult;
     if (saldos[cat] < 0) saldos[cat] = 0;
   }
@@ -80,7 +80,7 @@ class FirestoreDB {
   async addCajaMovimiento(mov) {
     const categoria = mov.categoria || 'Blanco';
     const lastSaldo = await this._getLastSaldo(categoria);
-    const mult = [500, 502].includes(mov.codigo) ? 1 : -1;
+    const mult = mov.codigo === 501 ? -1 : mov.codigo === 503 ? 0 : 1;
     const nuevoSaldo = lastSaldo + mov.monto * mult;
     if (nuevoSaldo < 0) {
       throw new Error(`Saldo insuficiente. Saldo actual: ${lastSaldo}, movimiento: ${mov.monto * mult}`);
@@ -112,7 +112,7 @@ class FirestoreDB {
     const newDocs = [];
     for (const item of newSorted) {
       const cat = item.categoria || 'Blanco';
-      const mult = item.codigo === 502 ? 1 : item.codigo === 503 ? 0 : -1;
+      const mult = item.codigo === 501 ? -1 : item.codigo === 503 ? 0 : 1;
       const anterior = saldos[cat];
       saldos[cat] += item.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
@@ -189,7 +189,7 @@ class FirestoreDB {
     let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
-      const mult = m.codigo === 502 ? 1 : m.codigo === 503 ? 0 : -1;
+      const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
       const anterior = saldos[cat];
       saldos[cat] += m.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
@@ -204,7 +204,7 @@ class FirestoreDB {
       }
     }
     if (count % 500 !== 0) await batch.commit();
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 2 });
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 3 });
   }
 
   async getVentas(fechaInicio, fechaFin) {
@@ -389,7 +389,7 @@ class FirestoreDB {
     let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
-      const mult = m.codigo === 502 ? 1 : m.codigo === 503 ? 0 : -1;
+      const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
       const anterior = saldos[cat];
       saldos[cat] += m.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
@@ -403,7 +403,7 @@ class FirestoreDB {
       }
     }
     if (count % 500 !== 0) await batch.commit();
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 2 });
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 3 });
     return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length, updated: count };
   }
 

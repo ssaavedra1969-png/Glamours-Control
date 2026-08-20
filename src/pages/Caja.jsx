@@ -66,7 +66,7 @@ export default function Caja() {
       });
       setVentasDelDia(ventasPorDia);
 
-      const SALDO_VERSION = 2;
+      const SALDO_VERSION = 3;
       if ((saldos._version || 0) < SALDO_VERSION) {
         toast.loading('Recalculando saldos...', { id: 'recalc' });
         const result = await mockDB.recalcularSaldosCompletos();
