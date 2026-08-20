@@ -9,7 +9,6 @@ import Ventas from './pages/Ventas';
 import CargaExcel from './pages/CargaExcel';
 import Reportes from './pages/Reportes';
 import Configuracion from './pages/Configuracion';
-import Conciliacion from './pages/Conciliacion';
 import CierresCaja from './pages/CierresCaja';
 import Auditoria from './pages/Auditoria';
 import './App.css';
@@ -33,7 +32,6 @@ function AppRoutes() {
         <Route path="carga" element={<CargaExcel />} />
         <Route path="reportes" element={<Reportes />} />
         <Route path="configuracion" element={<Configuracion />} />
-        <Route path="conciliacion" element={<Conciliacion />} />
         <Route path="cierres" element={<CierresCaja />} />
         <Route path="auditoria" element={<Auditoria />} />
       </Route>

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Download, Trash2, Edit3, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Download, Trash2, Edit3, ChevronDown, ChevronRight, ShoppingCart, Filter } from 'lucide-react';
 import mockDB from '../services/firestoreDB';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
-import { today } from '../utils/dateUtils';
+import { today, defaultDateFrom, defaultDateTo } from '../utils/dateUtils';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/exportUtils';
 import { useSortableData } from '../hooks/useSortableData';
 import DateFilter from '../components/DateFilter';
@@ -17,8 +17,8 @@ export default function Ventas() {
   const [filtered, setFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('todos');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(defaultDateFrom());
+  const [dateTo, setDateTo] = useState(defaultDateTo());
   const [showModal, setShowModal] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [stats, setStats] = useState({ blanco: 0, negro: 0, tarjeta: 0, total: 0 });
@@ -28,22 +28,20 @@ export default function Ventas() {
 
   const { sorted } = useSortableData(filtered, 'fecha', 'desc');
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [dateFrom, dateTo]);
 
   useEffect(() => {
     let result = [...ventas];
     if (filter === 'Blanco') result = result.filter((v) => v.categoria === 'Blanco');
     else if (filter === 'Negro') result = result.filter((v) => v.categoria === 'Negro');
     else if (filter === 'Tarjeta') result = result.filter((v) => v.medio_pago === 'Tarjeta');
-    if (dateFrom) result = result.filter((v) => v.fecha >= dateFrom);
-    if (dateTo) result = result.filter((v) => v.fecha <= dateTo);
     setFiltered(result);
-  }, [ventas, filter, dateFrom, dateTo]);
+  }, [ventas, filter]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await mockDB.getVentas();
+      const data = await mockDB.getVentas(dateFrom || undefined, dateTo || undefined);
       setVentas(data);
       const blanco = data.filter((v) => v.categoria === 'Blanco').reduce((s, v) => s + v.monto, 0);
       const negro = data.filter((v) => v.categoria === 'Negro').reduce((s, v) => s + v.monto, 0);
@@ -101,7 +99,7 @@ export default function Ventas() {
       banco: esTarjeta ? editForm.banco : null, cuotas: esTarjeta ? parseInt(editForm.cuotas) || 1 : 1,
       monto, descripcion: editForm.descripcion,
     });
-    mockDB.addAuditLog(user.email, `Edicion venta`, 'Ventas', `${editForm.categoria} ${formatCurrency(monto)}`);
+    mockDB.addAuditLog(user.email, 'Edicion venta', 'Ventas', `${editForm.categoria} ${formatCurrency(monto)}`);
     toast.success('Venta actualizada');
     setShowEdit(false);
     loadData();
@@ -124,88 +122,288 @@ export default function Ventas() {
     const data = sorted.map((v) => ({ Fecha: v.fecha, Tipo: v.tipo, Categoria: v.categoria || 'Tarjeta', Medio: v.medio_pago, Banco: v.banco || '-', Cuotas: v.cuotas, Monto: v.monto }));
     if (type === 'csv') exportToCSV(data, `ventas_${today()}`);
     else if (type === 'xlsx') exportToExcel(data, `ventas_${today()}`);
-    else if (type === 'pdf') exportToPDF(data, [{ key: 'Fecha', header: 'Fecha' }, { key: 'Categoria', header: 'Tipo' },       { key: 'Monto', header: 'Monto', format: 'currency' }], 'Ventas - GLAMOURS', `ventas_${today()}`);
+    else if (type === 'pdf') exportToPDF(data, [{ key: 'Fecha', header: 'Fecha' }, { key: 'Categoria', header: 'Tipo' }, { key: 'Monto', header: 'Monto', format: 'currency' }], 'Libro de Ventas - GLAMOURS', `ventas_${today()}`);
     toast.success(`Exportado como ${type.toUpperCase()}`);
   };
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}><div className="spinner" /></div>;
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <div className="spinner" />
+    </div>
+  );
+
   const esTarjeta = form.categoria === 'Tarjeta';
   const editEsTarjeta = editForm.categoria === 'Tarjeta';
 
   return (
-    <div>
-      <div className="stats-grid">
-        <div className="stat-card" style={{ borderLeftColor: '#d1d5db' }}><h3>Blanco (declarada)</h3><div className="value">{formatCurrency(stats.blanco)}</div><div className="subtitle">Efectivo declarado oficialmente</div></div>
-        <div className="stat-card" style={{ borderLeftColor: '#818cf8' }}><h3>Negro (no declarada)</h3><div className="value">{formatCurrency(stats.negro)}</div><div className="subtitle">Efectivo no declarado</div></div>
-        <div className="stat-card info"><h3>Tarjeta</h3><div className="value">{formatCurrency(stats.tarjeta)}</div><div className="subtitle">Credito / Debito</div></div>
-        <div className="stat-card accent"><h3>Total Ventas</h3><div className="value">{formatCurrency(stats.total)}</div></div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
 
-      <div className="card">
-        <div className="card-header">
-          <h2>Listado de Ventas</h2>
-          <div className="btn-group">
-            <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={16} /> Registrar Venta</button>
-            <button className="btn btn-outline" onClick={() => handleExport('xlsx')}><Download size={16} /> Excel</button>
-            <button className="btn btn-outline" onClick={() => handleExport('pdf')}><Download size={16} /> PDF</button>
+      {/* ============================================ */}
+      {/* SECCION 1: RESUMEN DE VENTAS                */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <ShoppingCart size={20} color="#fff" />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Libro de Ventas</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Ventas del periodo seleccionado</p>
           </div>
         </div>
-        <div className="alert alert-info"><strong>Relacion con Caja:</strong> Las ventas en <strong>Efectivo (Blanco/Negro)</strong> se registran automaticamente como "Ingreso en Caja". Las ventas con <strong>Tarjeta</strong> NO impactan en caja.</div>
-        <div className="filter-bar" style={{ flexDirection: 'column', gap: '0.5rem' }}>
-          <div className="btn-group">
+
+        {/* Card principal: Total */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+          border: '1px solid rgba(212,175,55,0.2)',
+          borderRadius: '16px', padding: '2rem 2.5rem',
+          position: 'relative', overflow: 'hidden',
+          marginBottom: '1.25rem',
+        }}>
+          <div style={{ position: 'absolute', top: '-30px', right: '-30px', fontSize: '8rem', opacity: 0.03, fontWeight: '900' }}>$</div>
+          <div style={{ fontSize: '0.8rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
+            Total Ventas
+          </div>
+          <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#d4af37', lineHeight: '1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+            {formatCurrency(stats.total)}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
+            Blanco: {formatCurrency(stats.blanco)} | Negro: {formatCurrency(stats.negro)} | Tarjeta: {formatCurrency(stats.tarjeta)}
+          </div>
+        </div>
+
+        {/* Cards por tipo */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+            borderRadius: '14px', padding: '1.25rem',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>💵</span>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#e2e8f0', lineHeight: '1.2' }}>Efectivo Blanco</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>Declarado oficialmente</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.blanco)}</div>
+          </div>
+
+          <div style={{
+            background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
+            borderRadius: '14px', padding: '1.25rem',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>🖤</span>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#c4b5fd', lineHeight: '1.2' }}>Efectivo Negro</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>No declarado</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.negro)}</div>
+          </div>
+
+          <div style={{
+            background: 'linear-gradient(135deg, #422006 0%, #78350f 100%)',
+            borderRadius: '14px', padding: '1.25rem',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>💳</span>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fbbf24', lineHeight: '1.2' }}>Tarjeta</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>Credito / Debito</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.tarjeta)}</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================ */}
+      {/* SECCION 2: FILTROS Y ACCIONES              */}
+      {/* ============================================ */}
+      <section>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '14px', padding: '1rem 1.25rem',
+          marginBottom: '0.75rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={() => setShowModal(true)} style={{ fontSize: '0.85rem' }}><Plus size={16} /> Registrar Venta</button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-outline" onClick={() => handleExport('xlsx')} style={{ fontSize: '0.85rem' }}><Download size={14} /> Excel</button>
+            <button className="btn btn-outline" onClick={() => handleExport('pdf')} style={{ fontSize: '0.85rem' }}><Download size={14} /> PDF</button>
+          </div>
+        </div>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '14px', padding: '1rem 1.25rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#d4af37' }}>
+            <Filter size={14} />
+            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Filtros</span>
+          </div>
+          <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)' }} />
+          <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
             {[
               { key: 'todos', label: 'Todos' },
-              { key: 'Blanco', label: 'Blanco (declarada)' },
-              { key: 'Negro', label: 'Negro (no declarada)' },
-              { key: 'Tarjeta', label: 'Tarjeta' },
-            ].map((f) => (<button key={f.key} className={`btn btn-outline btn-sm ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}>{f.label}</button>))}
+              { key: 'Blanco', label: 'Blanco', color: '#e2e8f0' },
+              { key: 'Negro', label: 'Negro', color: '#a78bfa' },
+              { key: 'Tarjeta', label: 'Tarjeta', color: '#fbbf24' },
+            ].map((f) => (
+              <button key={f.key} className={`btn btn-outline btn-sm ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}
+                style={{ fontSize: '0.75rem', borderColor: filter === f.key ? f.color : undefined, color: filter === f.key ? f.color : undefined }}>
+                {f.label}
+              </button>
+            ))}
           </div>
+          <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)' }} />
           <DateFilter dateFrom={dateFrom} dateTo={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         </div>
+      </section>
 
-        {/* Grouped by date */}
-        <div style={{ padding: '0.5rem 0' }}>
-          {sortedDates.length === 0 && <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af' }}>Sin ventas</div>}
+      {/* ============================================ */}
+      {/* SECCION 3: MOVIMIENTOS POR DIA             */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span style={{ fontSize: '1.2rem' }}>📋</span>
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Movimientos</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>
+              {filtered.length} ventas en {sortedDates.length} dias
+              {dateFrom && dateTo && ` (${dateFrom} al ${dateTo})`}
+            </p>
+          </div>
+        </div>
+
+        <div style={{
+          background: 'rgba(212,175,55,0.05)',
+          border: '1px solid rgba(212,175,55,0.15)',
+          borderRadius: '10px', padding: '0.75rem 1rem', marginBottom: '1rem',
+          fontSize: '0.78rem', color: '#9ca3af',
+        }}>
+          <strong style={{ color: '#d4af37' }}>Relacion con Caja:</strong> Las ventas en <strong>Efectivo (Blanco/Negro)</strong> se registran automaticamente como "Ingreso en Caja". Las ventas con <strong>Tarjeta</strong> NO impactan en caja.
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {sortedDates.length === 0 && (
+            <div style={{
+              textAlign: 'center', padding: '3rem',
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '14px', color: '#6b7280',
+            }}>
+              Sin ventas en este periodo
+            </div>
+          )}
+
           {sortedDates.map((date) => {
             const expanded = expandedDates[date];
             const ds = dayStats(date);
             return (
-              <div key={date} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <div onClick={() => toggleDate(date)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', cursor: 'pointer', transition: 'background 0.2s', background: expanded ? 'rgba(255,255,255,0.03)' : 'transparent' }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = expanded ? 'rgba(255,255,255,0.03)' : 'transparent'}>
-                  {expanded ? <ChevronDown size={16} color="#d4af37" /> : <ChevronRight size={16} color="#9ca3af" />}
-                  <strong style={{ minWidth: '100px', fontSize: '0.9rem' }}>{date}</strong>
-                  <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>{ds.count} ventas</span>
-                  {ds.blanco > 0 && <span style={{ fontSize: '0.7rem', color: '#d1d5db', background: 'rgba(209,213,219,0.1)', padding: '2px 6px', borderRadius: '4px' }}>B: {formatCurrency(ds.blanco)}</span>}
-                  {ds.negro > 0 && <span style={{ fontSize: '0.7rem', color: '#818cf8', background: 'rgba(129,140,248,0.1)', padding: '2px 6px', borderRadius: '4px' }}>N: {formatCurrency(ds.negro)}</span>}
-                  {ds.tarjeta > 0 && <span style={{ fontSize: '0.7rem', color: '#22d3ee', background: 'rgba(34,211,238,0.1)', padding: '2px 6px', borderRadius: '4px' }}>T: {formatCurrency(ds.tarjeta)}</span>}
-                  <span style={{ flex: 1 }} />
-                  <span style={{ fontWeight: '700', color: '#d4af37' }}>{formatCurrency(ds.total)}</span>
+              <div key={date} style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '14px', overflow: 'hidden',
+              }}>
+                <div onClick={() => toggleDate(date)} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '1rem 1.25rem', cursor: 'pointer',
+                  background: expanded ? 'rgba(255,255,255,0.04)' : 'transparent',
+                  transition: 'background 0.2s',
+                }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = expanded ? 'rgba(255,255,255,0.04)' : 'transparent'}>
+                  {expanded ? <ChevronDown size={18} color="#d4af37" /> : <ChevronRight size={18} color="#6b7280" />}
+
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ fontSize: '0.95rem', color: '#f3f4f6' }}>{date}</strong>
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '0.5rem' }}>
+                      {ds.count} venta{ds.count !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
+                    {ds.blanco > 0 && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#e2e8f0', background: 'rgba(209,213,219,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
+                        B: {formatCurrency(ds.blanco)}
+                      </span>
+                    )}
+                    {ds.negro > 0 && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#a78bfa', background: 'rgba(129,140,248,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
+                        N: {formatCurrency(ds.negro)}
+                      </span>
+                    )}
+                    {ds.tarjeta > 0 && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#fbbf24', background: 'rgba(251,191,36,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
+                        T: {formatCurrency(ds.tarjeta)}
+                      </span>
+                    )}
+                    <span style={{ fontSize: '0.9rem', fontWeight: '900', color: '#d4af37', marginLeft: '0.25rem' }}>
+                      {formatCurrency(ds.total)}
+                    </span>
+                  </div>
                 </div>
+
                 {expanded && (
-                  <div style={{ padding: '0 1rem 0.75rem 2.5rem' }}>
-                    <table style={{ width: '100%' }}>
-                      <thead><tr><th>Categoria</th><th>Medio</th><th>Banco</th><th>Cuotas</th><th>Descripcion</th><th className="amount">Monto</th><th>Acciones</th></tr></thead>
+                  <div style={{
+                    padding: '0 1.25rem 1.25rem',
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Categoria</th>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Medio</th>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Banco</th>
+                          <th style={{ textAlign: 'center', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Cuotas</th>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Descripcion</th>
+                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Monto</th>
+                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Acciones</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {(groupedByDate[date] || []).map((v) => (
-                          <tr key={v.id}>
-                            <td>
+                          <tr key={v.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '0.6rem 0.5rem' }}>
                               {v.medio_pago === 'Tarjeta'
-                                ? <span className="badge badge-info">Tarjeta</span>
+                                ? <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>Tarjeta</span>
                                 : v.categoria === 'Blanco'
-                                  ? <span className="badge badge-neutral" style={{ background: 'rgba(209,213,219,0.15)', color: '#d1d5db', border: '1px solid rgba(209,213,219,0.3)' }}>Blanco (declarada)</span>
-                                  : <span className="badge" style={{ background: 'rgba(129,140,248,0.15)', color: '#818cf8', border: '1px solid rgba(129,140,248,0.3)' }}>Negro (no declarada)</span>
+                                  ? <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(209,213,219,0.12)', color: '#e2e8f0' }}>Blanco</span>
+                                  : <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(129,140,248,0.12)', color: '#a78bfa' }}>Negro</span>
                               }
                             </td>
-                            <td>{v.medio_pago}</td>
-                            <td>{v.banco || '-'}</td>
-                            <td>{v.cuotas}</td>
-                            <td style={{ color: '#9ca3af', fontSize: '0.85rem' }}>{v.descripcion || '-'}</td>
-                            <td className="amount" style={{ fontWeight: '700' }}>{formatCurrency(v.monto)}</td>
-                            <td style={{ display: 'flex', gap: '0.25rem' }}>
-                              <button className="btn-icon" onClick={() => openEdit(v)} title="Editar"><Edit3 size={14} /></button>
-                              <button className="btn-icon" onClick={() => handleDelete(v.id)} title="Eliminar"><Trash2 size={14} /></button>
+                            <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{v.medio_pago}</td>
+                            <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{v.banco || '-'}</td>
+                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'center', color: '#6b7280', fontSize: '0.82rem' }}>{v.cuotas}</td>
+                            <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{v.descripcion || '-'}</td>
+                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#d4af37', fontWeight: '800', fontSize: '0.85rem' }}>
+                              {formatCurrency(v.monto)}
+                            </td>
+                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                                <button className="btn-icon" onClick={() => openEdit(v)} title="Editar"><Edit3 size={14} /></button>
+                                <button className="btn-icon" onClick={() => handleDelete(v.id)} title="Eliminar"><Trash2 size={14} /></button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -217,7 +415,11 @@ export default function Ventas() {
             );
           })}
         </div>
-      </div>
+      </section>
+
+      {/* ============================================ */}
+      {/* MODALS                                      */}
+      {/* ============================================ */}
 
       {/* Modal Registrar */}
       <div className={`modal-overlay ${showModal ? 'active' : ''}`} onClick={() => setShowModal(false)}>

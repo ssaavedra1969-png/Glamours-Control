@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Plus, Download, Trash2, Edit3, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Download, Trash2, Edit3, ChevronDown, ChevronRight, Wallet, Filter, RefreshCw } from 'lucide-react';
 import mockDB from '../services/firestoreDB';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
-import { today } from '../utils/dateUtils';
+import { today, defaultDateFrom, defaultDateTo } from '../utils/dateUtils';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/exportUtils';
 import DateFilter from '../components/DateFilter';
 import toast from 'react-hot-toast';
@@ -15,8 +15,8 @@ export default function Caja() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('todos');
   const [filterCat, setFilterCat] = useState('todos');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(defaultDateFrom());
+  const [dateTo, setDateTo] = useState(defaultDateTo());
   const [showModal, setShowModal] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [showCierre, setShowCierre] = useState(false);
@@ -26,7 +26,7 @@ export default function Caja() {
   const [stats, setStats] = useState({ saldo_blanco: 0, saldo_negro: 0, ingresos_hoy: 0, egresos_hoy: 0 });
   const [expandedDates, setExpandedDates] = useState({});
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [dateFrom, dateTo]);
 
   useEffect(() => {
     let result = [...movimientos];
@@ -35,23 +35,21 @@ export default function Caja() {
     else if (filter === 'Retiro') result = result.filter((m) => m.codigo === 503);
     if (filterCat === 'Blanco') result = result.filter((m) => m.categoria === 'Blanco');
     else if (filterCat === 'Negro') result = result.filter((m) => m.categoria === 'Negro');
-    if (dateFrom) result = result.filter((m) => m.fecha >= dateFrom);
-    if (dateTo) result = result.filter((m) => m.fecha <= dateTo);
     setFiltered(result);
-  }, [movimientos, filter, filterCat, dateFrom, dateTo]);
+  }, [movimientos, filter, filterCat]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await mockDB.getCaja();
+      const [data, saldos, hoyData] = await Promise.all([
+        mockDB.getCaja(dateFrom || undefined, dateTo || undefined),
+        mockDB.getEstadoSaldos(),
+        mockDB.getCaja(today(), today()),
+      ]);
       setMovimientos(data);
-      const saldoBlanco = data.filter((m) => m.categoria === 'Blanco').length > 0 ? data.filter((m) => m.categoria === 'Blanco')[0].saldo_nuevo : 0;
-      const saldoNegro = data.filter((m) => m.categoria === 'Negro').length > 0 ? data.filter((m) => m.categoria === 'Negro')[0].saldo_nuevo : 0;
-      const hoy = today();
-      const movsHoy = data.filter((m) => m.fecha === hoy);
-      const ingresos = movsHoy.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
-      const egresos = movsHoy.filter((m) => [501, 503].includes(m.codigo)).reduce((s, m) => s + m.monto, 0);
-      setStats({ saldo_blanco: saldoBlanco, saldo_negro: saldoNegro, ingresos_hoy: ingresos, egresos_hoy: egresos });
+      const ingresos = hoyData.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
+      const egresos = hoyData.filter((m) => [501, 503].includes(m.codigo)).reduce((s, m) => s + m.monto, 0);
+      setStats({ saldo_blanco: saldos.Blanco, saldo_negro: saldos.Negro, ingresos_hoy: ingresos, egresos_hoy: egresos });
     } catch { toast.error('Error al cargar caja'); }
     finally { setLoading(false); }
   };
@@ -136,6 +134,19 @@ export default function Caja() {
     setCierreForm({ saldo_real_blanco: '', saldo_real_negro: '', observaciones: '' });
   };
 
+  const handleRecalcular = async () => {
+    toast.loading('Recalculando saldos...');
+    try {
+      const result = await mockDB.recalcularSaldosCompletos();
+      toast.dismiss();
+      toast.success(`Saldos recalculados: Blanco $${result.blanco.toLocaleString()} / Negro $${result.negro.toLocaleString()} (${result.total} docs)`);
+      loadData();
+    } catch (err) {
+      toast.dismiss();
+      toast.error('Error recalculando: ' + err.message);
+    }
+  };
+
   const handleExport = (type) => {
     const data = filtered.map((m) => ({ Fecha: m.fecha, Tipo: m.tipo, Categoria: m.categoria, Descripcion: m.descripcion, Monto: m.monto, Saldo: m.saldo_nuevo, Origen: m.origen }));
     if (type === 'csv') exportToCSV(data, `caja_${today()}`);
@@ -144,86 +155,313 @@ export default function Caja() {
     toast.success(`Exportado como ${type.toUpperCase()}`);
   };
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}><div className="spinner" /></div>;
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <div className="spinner" />
+    </div>
+  );
 
   return (
-    <div>
-      <div className="stats-grid">
-        <div className="stat-card" style={{ borderLeft: '3px solid #facc15' }}><h3>Saldo Blanco</h3><div className="value" style={{ color: '#facc15' }}>{formatCurrency(stats.saldo_blanco)}</div><div className="subtitle">Efectivo declarado</div></div>
-        <div className="stat-card" style={{ borderLeft: '3px solid #6b7280' }}><h3>Saldo Negro</h3><div className="value" style={{ color: '#9ca3af' }}>{formatCurrency(stats.saldo_negro)}</div><div className="subtitle">Efectivo no declarado</div></div>
-        <div className="stat-card success"><h3>Ingresos Hoy</h3><div className="value">{formatCurrency(stats.ingresos_hoy)}</div><div className="subtitle">502 - Ingreso en Caja</div></div>
-        <div className="stat-card danger"><h3>Egresos Hoy</h3><div className="value">{formatCurrency(stats.egresos_hoy)}</div><div className="subtitle">501/503 - Egreso/Retiro</div></div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
 
-      <div className="card">
-        <div className="card-header">
-          <h2>Libro de Caja</h2>
-          <div className="btn-group">
-            <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={16} /> Registrar</button>
-            <button className="btn btn-accent" onClick={() => setShowCierre(true)}>Cerrar Caja</button>
-            <button className="btn btn-outline" onClick={() => handleExport('xlsx')}><Download size={16} /> Excel</button>
-            <button className="btn btn-outline" onClick={() => handleExport('pdf')}><Download size={16} /> PDF</button>
+      {/* ============================================ */}
+      {/* SECCION 1: SALDOS                          */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #facc15 0%, #f59e0b 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Wallet size={20} color="#000" />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Libro de Caja</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Saldos y movimientos del periodo seleccionado</p>
           </div>
         </div>
-        <div className="filter-bar" style={{ flexDirection: 'column', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div className="btn-group">
-              {['todos', 'Ingreso', 'Egreso', 'Retiro'].map((f) => (<button key={f} className={`btn btn-outline btn-sm ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>{f === 'todos' ? 'Todos' : f + 's'}</button>))}
-            </div>
-            <div className="btn-group">
-              {['todos', 'Blanco', 'Negro'].map((c) => (<button key={c} className={`btn btn-outline btn-sm ${filterCat === c ? 'active' : ''}`} onClick={() => setFilterCat(c)} style={c === 'Blanco' ? { borderColor: c === filterCat ? '#facc15' : undefined, color: c === filterCat ? '#facc15' : undefined } : c === 'Negro' ? { borderColor: c === filterCat ? '#9ca3af' : undefined, color: c === filterCat ? '#9ca3af' : undefined } : {}}>{c === 'todos' ? 'Todas' : c}</button>))}
-            </div>
+
+        {/* Card principal: Saldo total */}
+        <div style={{
+          background: 'linear-gradient(135deg, #854d0e 0%, #a16207 40%, #ca8a04 100%)',
+          borderRadius: '16px', padding: '2rem 2.5rem',
+          border: '1px solid rgba(250,204,21,0.3)',
+          position: 'relative', overflow: 'hidden',
+          marginBottom: '1.25rem',
+        }}>
+          <div style={{ position: 'absolute', top: '-30px', right: '-30px', fontSize: '8rem', opacity: 0.04, fontWeight: '900' }}>$</div>
+          <div style={{ fontSize: '0.8rem', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
+            Saldo Total en Caja
           </div>
+          <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#fff', lineHeight: '1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+            {formatCurrency(stats.saldo_blanco + stats.saldo_negro)}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
+            Blanco: {formatCurrency(stats.saldo_blanco)} | Negro: {formatCurrency(stats.saldo_negro)}
+          </div>
+        </div>
+
+        {/* Cards secundarias */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+            borderRadius: '14px', padding: '1.25rem',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>💵</span>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#e2e8f0', lineHeight: '1.2' }}>Saldo Blanco</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>Efectivo declarado</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.saldo_blanco)}</div>
+          </div>
+
+          <div style={{
+            background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
+            borderRadius: '14px', padding: '1.25rem',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>🖤</span>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#c4b5fd', lineHeight: '1.2' }}>Saldo Negro</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>Efectivo no declarado</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.saldo_negro)}</div>
+          </div>
+
+          <div style={{
+            background: 'linear-gradient(135deg, #022c22 0%, #064e3b 100%)',
+            borderRadius: '14px', padding: '1.25rem',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>📈</span>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#6ee7b7', lineHeight: '1.2' }}>Ingresos Hoy</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>502 - Ingreso en Caja</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#10b981', lineHeight: '1' }}>{formatCurrency(stats.ingresos_hoy)}</div>
+          </div>
+
+          <div style={{
+            background: 'linear-gradient(135deg, #450a0a 0%, #7f1d1d 100%)',
+            borderRadius: '14px', padding: '1.25rem',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <span style={{ fontSize: '1.2rem' }}>📉</span>
+              <div>
+                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fca5a5', lineHeight: '1.2' }}>Egresos Hoy</div>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>501/503 - Egreso/Retiro</div>
+              </div>
+            </div>
+            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#ef4444', lineHeight: '1' }}>{formatCurrency(stats.egresos_hoy)}</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================ */}
+      {/* SECCION 2: FILTROS Y ACCIONES              */}
+      {/* ============================================ */}
+      <section>
+        {/* Barra de acciones */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '14px', padding: '1rem 1.25rem',
+          marginBottom: '0.75rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={() => setShowModal(true)} style={{ fontSize: '0.85rem' }}><Plus size={16} /> Registrar</button>
+            <button className="btn btn-accent" onClick={() => setShowCierre(true)} style={{ fontSize: '0.85rem' }}>Cerrar Caja</button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-outline" onClick={() => handleExport('xlsx')} style={{ fontSize: '0.85rem' }}><Download size={14} /> Excel</button>
+            <button className="btn btn-outline" onClick={() => handleExport('pdf')} style={{ fontSize: '0.85rem' }}><Download size={14} /> PDF</button>
+            <button className="btn btn-outline" onClick={handleRecalcular} title="Recalcular saldos desde cero" style={{ fontSize: '0.85rem' }}><RefreshCw size={14} /> Recalcular</button>
+          </div>
+        </div>
+
+        {/* Barra de filtros */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '14px', padding: '1rem 1.25rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#d4af37' }}>
+            <Filter size={14} />
+            <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Filtros</span>
+          </div>
+          <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)' }} />
+          <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+            {['todos', 'Ingreso', 'Egreso', 'Retiro'].map((f) => (
+              <button key={f} className={`btn btn-outline btn-sm ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)} style={{ fontSize: '0.75rem' }}>
+                {f === 'todos' ? 'Todos' : f + 's'}
+              </button>
+            ))}
+          </div>
+          <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)' }} />
+          <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+            {['todos', 'Blanco', 'Negro'].map((c) => (
+              <button key={c} className={`btn btn-outline btn-sm ${filterCat === c ? 'active' : ''}`} onClick={() => setFilterCat(c)}
+                style={{
+                  fontSize: '0.75rem',
+                  borderColor: c === 'Blanco' ? (filterCat === c ? '#facc15' : undefined) : c === 'Negro' ? (filterCat === c ? '#9ca3af' : undefined) : undefined,
+                  color: c === 'Blanco' ? (filterCat === c ? '#facc15' : undefined) : c === 'Negro' ? (filterCat === c ? '#9ca3af' : undefined) : undefined,
+                }}>
+                {c === 'todos' ? 'Todas' : c}
+              </button>
+            ))}
+          </div>
+          <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)' }} />
           <DateFilter dateFrom={dateFrom} dateTo={dateTo} onChange={(f, t) => { setDateFrom(f); setDateTo(t); }} />
         </div>
+      </section>
 
-        {/* Grouped by date */}
-        <div style={{ padding: '0.5rem 0' }}>
-          {sortedDates.length === 0 && <div style={{ textAlign: 'center', padding: '2rem', color: '#9ca3af' }}>Sin movimientos</div>}
+      {/* ============================================ */}
+      {/* SECCION 3: MOVIMIENTOS POR DIA             */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span style={{ fontSize: '1.2rem' }}>📋</span>
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Movimientos</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>
+              {filtered.length} movimientos en {sortedDates.length} dias
+              {dateFrom && dateTo && ` (${dateFrom} al ${dateTo})`}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {sortedDates.length === 0 && (
+            <div style={{
+              textAlign: 'center', padding: '3rem',
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '14px', color: '#6b7280',
+            }}>
+              Sin movimientos en este periodo
+            </div>
+          )}
+
           {sortedDates.map((date) => {
             const expanded = expandedDates[date];
             const ds = dayStats(date);
             return (
-              <div key={date} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <div onClick={() => toggleDate(date)} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', cursor: 'pointer', transition: 'background 0.2s', background: expanded ? 'rgba(255,255,255,0.03)' : 'transparent' }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = expanded ? 'rgba(255,255,255,0.03)' : 'transparent'}>
-                  {expanded ? <ChevronDown size={16} color="#d4af37" /> : <ChevronRight size={16} color="#9ca3af" />}
-                  <strong style={{ minWidth: '100px', fontSize: '0.9rem' }}>{date}</strong>
-                  <span className="badge badge-neutral" style={{ fontSize: '0.7rem' }}>{ds.count} movs</span>
-                  {ds.ingresos > 0 && <span style={{ fontSize: '0.7rem', color: '#10b981', background: 'rgba(16,185,129,0.1)', padding: '2px 6px', borderRadius: '4px' }}>+{formatCurrency(ds.ingresos)}</span>}
-                  {ds.egresos > 0 && <span style={{ fontSize: '0.7rem', color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '4px' }}>-{formatCurrency(ds.egresos)}</span>}
-                  {ds.blanco !== 0 && <span style={{ fontSize: '0.7rem', color: '#facc15', background: 'rgba(250,204,21,0.1)', padding: '2px 6px', borderRadius: '4px' }}>B: {ds.blanco > 0 ? '+' : ''}{formatCurrency(ds.blanco)}</span>}
-                  {ds.negro !== 0 && <span style={{ fontSize: '0.7rem', color: '#9ca3af', background: 'rgba(156,163,175,0.1)', padding: '2px 6px', borderRadius: '4px' }}>N: {ds.negro > 0 ? '+' : ''}{formatCurrency(ds.negro)}</span>}
+              <div key={date} style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderRadius: '14px', overflow: 'hidden',
+              }}>
+                {/* Header del dia */}
+                <div onClick={() => toggleDate(date)} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '1rem 1.25rem', cursor: 'pointer',
+                  background: expanded ? 'rgba(255,255,255,0.04)' : 'transparent',
+                  transition: 'background 0.2s',
+                }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = expanded ? 'rgba(255,255,255,0.04)' : 'transparent'}>
+                  {expanded ? <ChevronDown size={18} color="#d4af37" /> : <ChevronRight size={18} color="#6b7280" />}
+
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ fontSize: '0.95rem', color: '#f3f4f6' }}>{date}</strong>
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280', marginLeft: '0.5rem' }}>
+                      {ds.count} movimiento{ds.count !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {ds.ingresos > 0 && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '0.2rem 0.6rem', borderRadius: '8px' }}>
+                        +{formatCurrency(ds.ingresos)}
+                      </span>
+                    )}
+                    {ds.egresos > 0 && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '0.2rem 0.6rem', borderRadius: '8px' }}>
+                        -{formatCurrency(ds.egresos)}
+                      </span>
+                    )}
+                    {ds.blanco !== 0 && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#facc15', background: 'rgba(250,204,21,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
+                        B: {ds.blanco > 0 ? '+' : ''}{formatCurrency(ds.blanco)}
+                      </span>
+                    )}
+                    {ds.negro !== 0 && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#9ca3af', background: 'rgba(156,163,175,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
+                        N: {ds.negro > 0 ? '+' : ''}{formatCurrency(ds.negro)}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {/* Detalle del dia (expandible) */}
                 {expanded && (
-                  <div style={{ padding: '0 1rem 0.75rem 2.5rem' }}>
-                    <table style={{ width: '100%' }}>
+                  <div style={{
+                    padding: '0 1.25rem 1.25rem',
+                    borderTop: '1px solid rgba(255,255,255,0.06)',
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <thead>
-                        <tr><th>Tipo</th><th>Categoria</th><th>Descripcion</th><th>Origen</th><th className="amount">Monto</th><th className="amount">Saldo</th><th>Acciones</th></tr>
+                        <tr>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Tipo</th>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Categoria</th>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Descripcion</th>
+                          <th style={{ textAlign: 'left', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Origen</th>
+                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Monto</th>
+                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Saldo</th>
+                          <th style={{ textAlign: 'right', fontSize: '0.7rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.75rem 0.5rem 0.5rem' }}>Acciones</th>
+                        </tr>
                       </thead>
                       <tbody>
                         {(groupedByDate[date] || []).map((m) => (
-                          <tr key={m.id}>
-                            <td><span className={`badge ${m.codigo === 502 ? 'badge-success' : m.codigo === 501 ? 'badge-danger' : 'badge-warning'}`}>{m.tipo}</span></td>
-                            <td>
+                          <tr key={m.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                            <td style={{ padding: '0.6rem 0.5rem' }}>
                               <span style={{
-                                display: 'inline-block', padding: '0.15rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600',
-                                background: m.categoria === 'Blanco' ? 'rgba(250,204,21,0.15)' : 'rgba(156,163,175,0.15)',
+                                fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px',
+                                background: m.codigo === 502 ? 'rgba(16,185,129,0.12)' : m.codigo === 501 ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
+                                color: m.codigo === 502 ? '#10b981' : m.codigo === 501 ? '#ef4444' : '#f97316',
+                              }}>
+                                {m.tipo}
+                              </span>
+                            </td>
+                            <td style={{ padding: '0.6rem 0.5rem' }}>
+                              <span style={{
+                                fontSize: '0.72rem', fontWeight: '600', padding: '0.15rem 0.5rem', borderRadius: '4px',
+                                background: m.categoria === 'Blanco' ? 'rgba(250,204,21,0.12)' : 'rgba(156,163,175,0.12)',
                                 color: m.categoria === 'Blanco' ? '#facc15' : '#9ca3af',
                               }}>
                                 {m.categoria || 'Blanco'}
                               </span>
                             </td>
-                            <td style={{ color: '#9ca3af', fontSize: '0.85rem' }}>{m.descripcion}</td>
-                            <td><span className="badge badge-neutral">{m.origen}</span></td>
-                            <td className="amount" style={{ color: m.codigo === 502 ? '#10b981' : '#ef4444', fontWeight: '700' }}>
+                            <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{m.descripcion}</td>
+                            <td style={{ padding: '0.6rem 0.5rem' }}>
+                              <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', background: 'rgba(255,255,255,0.05)', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>{m.origen}</span>
+                            </td>
+                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: m.codigo === 502 ? '#10b981' : '#ef4444', fontWeight: '800', fontSize: '0.85rem' }}>
                               {m.codigo === 502 ? '+' : '-'}{formatCurrency(m.monto)}
                             </td>
-                            <td className="amount">{formatCurrency(m.saldo_nuevo)}</td>
-                            <td style={{ display: 'flex', gap: '0.25rem' }}>
-                              <button className="btn-icon" onClick={() => openEdit(m)} title="Editar"><Edit3 size={14} /></button>
-                              <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar"><Trash2 size={14} /></button>
+                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#d4af37', fontWeight: '700', fontSize: '0.82rem' }}>{formatCurrency(m.saldo_nuevo)}</td>
+                            <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                                <button className="btn-icon" onClick={() => openEdit(m)} title="Editar"><Edit3 size={14} /></button>
+                                <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar"><Trash2 size={14} /></button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -235,7 +473,11 @@ export default function Caja() {
             );
           })}
         </div>
-      </div>
+      </section>
+
+      {/* ============================================ */}
+      {/* MODALS                                      */}
+      {/* ============================================ */}
 
       {/* Modal Registrar */}
       <div className={`modal-overlay ${showModal ? 'active' : ''}`} onClick={() => setShowModal(false)}>

@@ -1,6 +1,14 @@
 import { format, parseISO, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 
+export function defaultDateFrom() {
+  return format(subDays(new Date(), 29), 'yyyy-MM-dd');
+}
+
+export function defaultDateTo() {
+  return format(new Date(), 'yyyy-MM-dd');
+}
+
 export function formatDate(date, fmt = 'dd/MM/yyyy') {
   if (!date) return '--';
   const d = typeof date === 'string' ? parseISO(date) : date;

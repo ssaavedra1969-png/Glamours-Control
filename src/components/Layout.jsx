@@ -5,16 +5,15 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   LayoutDashboard, Wallet, ShoppingCart, Upload, FileBarChart,
-  Settings, ArrowLeftRight, Lock, ShieldCheck, Menu, X
+  Settings, Lock, ShieldCheck, Menu, X
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/caja', label: 'Libro de Caja', icon: Wallet },
-  { path: '/ventas', label: 'Ventas', icon: ShoppingCart },
-  { path: '/carga', label: 'Carga Excel', icon: Upload },
+  { path: '/ventas', label: 'Libro de Ventas', icon: ShoppingCart },
+  { path: '/carga', label: 'Carga Masiva', icon: Upload },
   { path: '/reportes', label: 'Reportes', icon: FileBarChart },
-  { path: '/conciliacion', label: 'Conciliacion', icon: ArrowLeftRight },
   { path: '/cierres', label: 'Cierres de Caja', icon: Lock },
   { path: '/configuracion', label: 'Configuracion', icon: Settings },
   { path: '/auditoria', label: 'Auditoria', icon: ShieldCheck },
@@ -23,10 +22,9 @@ const NAV_ITEMS = [
 const SECTION_TITLES = {
   '/': 'Dashboard',
   '/caja': 'Libro de Caja',
-  '/ventas': 'Gestion de Ventas',
-  '/carga': 'Carga de Archivos Excel',
+  '/ventas': 'Libro de Ventas',
+  '/carga': 'Carga Masiva',
   '/reportes': 'Reportes y Estadisticas',
-  '/conciliacion': 'Conciliacion Bancaria',
   '/cierres': 'Cierres de Caja',
   '/configuracion': 'Configuracion del Sistema',
   '/auditoria': 'Registro de Auditoria',

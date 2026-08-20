@@ -15,10 +15,11 @@ async function getAllRaw(collectionName) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-// Calcula los saldos acumulados por categoria a partir de la coleccion completa.
+// Calcula saldos ordenando por creado (cronológico) y aplicando piso en 0 por categoria.
 function computeSaldos(list) {
+  const sorted = [...list].sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
   const saldos = { Blanco: 0, Negro: 0 };
-  for (const m of list) {
+  for (const m of sorted) {
     const cat = m.categoria || 'Blanco';
     const mult = [500, 502].includes(m.codigo) ? 1 : -1;
     saldos[cat] += m.monto * mult;
@@ -377,6 +378,13 @@ class FirestoreDB {
 
   async addAuditLog(usuario, accion, modulo, detalle) {
     return this.addAuditoria({ usuario, accion, modulo, detalle });
+  }
+
+  async recalcularSaldosCompletos() {
+    const all = await getAllRaw('caja');
+    const saldos = computeSaldos(all);
+    await this.setEstadoSaldos(saldos);
+    return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length };
   }
 
   async processExcelFile(rawData, fileName, fileDate, onProgress) {

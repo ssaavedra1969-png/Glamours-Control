@@ -57,6 +57,18 @@ export default function DateFilter({ dateFrom, dateTo, onChange }) {
 
   const quickPresets = PRESETS.slice(0, 6);
 
+  const dateInputStyle = {
+    fontSize: '0.8rem',
+    padding: '0.35rem 0.5rem',
+    background: 'rgba(255,255,255,0.06)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: '6px',
+    color: '#e5e7eb',
+    width: '130px',
+    fontFamily: 'monospace',
+    letterSpacing: '0.03em',
+  };
+
   return (
     <div style={{ width: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -93,15 +105,15 @@ export default function DateFilter({ dateFrom, dateTo, onChange }) {
 
           {mode === 'rango' && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input type="date" value={dateFrom} onChange={(e) => onChange(e.target.value, dateTo)} style={{ fontSize: '0.8rem' }} />
+              <input type="text" placeholder="aaaa-mm-dd" value={dateFrom} onChange={(e) => onChange(e.target.value, dateTo)} style={dateInputStyle} />
               <span style={{ color: '#9ca3af', fontSize: '0.8rem' }}>a</span>
-              <input type="date" value={dateTo} onChange={(e) => onChange(dateFrom, e.target.value)} style={{ fontSize: '0.8rem' }} />
+              <input type="text" placeholder="aaaa-mm-dd" value={dateTo} onChange={(e) => onChange(dateFrom, e.target.value)} style={dateInputStyle} />
             </div>
           )}
 
           {mode === 'dia' && (
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} style={{ fontSize: '0.8rem' }} />
+              <input type="text" placeholder="aaaa-mm-dd" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} style={dateInputStyle} />
               <button className="btn btn-primary btn-sm" onClick={applyDay}>Aplicar</button>
             </div>
           )}
