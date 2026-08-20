@@ -44,16 +44,19 @@ export default function Caja() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [data, saldos, hoyData, ventas] = await Promise.all([
+      const t = today();
+      const needTodaySeparately = t < dateFrom || t > dateTo;
+      const [data, saldos, ventas, hoyDataExtra] = await Promise.all([
         mockDB.getCaja(dateFrom || undefined, dateTo || undefined),
         mockDB.getEstadoSaldos(),
-        mockDB.getCaja(today(), today()),
         mockDB.getVentas(dateFrom || undefined, dateTo || undefined),
+        needTodaySeparately ? mockDB.getCaja(t, t) : Promise.resolve(null),
       ]);
       setMovimientos(data);
+      const hoyData = hoyDataExtra || data.filter((m) => m.fecha === t);
       const ingresos = hoyData.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
       const retiros = hoyData.filter((m) => m.codigo === 503).reduce((s, m) => s + m.monto, 0);
-      setStats({ saldo_blanco: saldos.Blanco, saldo_negro: saldos.Negro, ingresos_hoy: ingresos, retiros_hoy: retiros });
+      setStats({ saldo_blanco: saldos.Blanco || 0, saldo_negro: saldos.Negro || 0, ingresos_hoy: ingresos, retiros_hoy: retiros });
       const ventasPorDia = {};
       ventas.forEach((v) => {
         if (v.medio_pago === 'Efectivo') {
@@ -62,6 +65,14 @@ export default function Caja() {
         }
       });
       setVentasDelDia(ventasPorDia);
+
+      const SALDO_VERSION = 2;
+      if ((saldos._version || 0) < SALDO_VERSION) {
+        toast.loading('Recalculando saldos...', { id: 'recalc' });
+        const result = await mockDB.recalcularSaldosCompletos();
+        toast.success(`Saldos recalculados (${result.updated} registros)`, { id: 'recalc' });
+        setStats((prev) => ({ ...prev, saldo_blanco: result.blanco, saldo_negro: result.negro }));
+      }
     } catch { toast.error('Error al cargar caja'); }
     finally { setLoading(false); }
   };
