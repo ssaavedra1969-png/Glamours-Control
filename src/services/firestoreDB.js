@@ -383,28 +383,16 @@ class FirestoreDB {
 
   async recalcularSaldosCompletos() {
     const allSnap = await getDocs(col('caja'));
-    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
+    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const saldos = { Blanco: 0, Negro: 0 };
-    let batch = writeBatch(db);
-    let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
       const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
-      const anterior = saldos[cat];
       saldos[cat] += m.monto * mult;
       if (saldos[cat] < 0) saldos[cat] = 0;
-      if (m.saldo_anterior !== anterior || m.saldo_nuevo !== saldos[cat]) {
-        batch.update(docRef('caja', m.id), { saldo_anterior: anterior, saldo_nuevo: saldos[cat] });
-        count++;
-        if (count % 500 === 0) {
-          await batch.commit();
-          batch = writeBatch(db);
-        }
-      }
     }
-    if (count % 500 !== 0) await batch.commit();
     await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 3 });
-    return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length, updated: count };
+    return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length, updated: 0 };
   }
 
   async processExcelFile(rawData, fileName, fileDate, onProgress) {

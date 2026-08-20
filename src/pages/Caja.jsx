@@ -68,9 +68,8 @@ export default function Caja() {
 
       const SALDO_VERSION = 3;
       if ((saldos._version || 0) < SALDO_VERSION) {
-        toast.loading('Recalculando saldos...', { id: 'recalc' });
         const result = await mockDB.recalcularSaldosCompletos();
-        toast.success(`Saldos recalculados (${result.updated} registros)`, { id: 'recalc' });
+        toast.success(`Saldos recalculados (${result.updated} registros)`, { duration: 4000 });
         setStats((prev) => ({ ...prev, saldo_blanco: result.blanco, saldo_negro: result.negro }));
       }
     } catch { toast.error('Error al cargar caja'); }
