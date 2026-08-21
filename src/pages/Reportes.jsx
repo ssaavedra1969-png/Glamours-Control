@@ -98,7 +98,22 @@ export default function Reportes() {
   const [allVentas, setAllVentas] = useState([]);
 
   useEffect(() => { loadData(); }, [dateFrom, dateTo]);
-  useEffect(() => { mockDB.getVentas().then(setAllVentas).catch(() => {}); }, []);
+
+  // Historico completo con cache de sesion (10 min): evita releer ~2.700 ventas en cada visita
+  useEffect(() => {
+    const KEY = 'gl_reportes_ventas';
+    try {
+      const raw = sessionStorage.getItem(KEY);
+      if (raw) {
+        const { t, data } = JSON.parse(raw);
+        if (Date.now() - t < 10 * 60 * 1000 && Array.isArray(data)) { setAllVentas(data); return; }
+      }
+    } catch {}
+    mockDB.getVentas().then((data) => {
+      setAllVentas(data);
+      try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), data })); } catch {}
+    }).catch(() => {});
+  }, []);
 
   const loadData = async () => {
     setLoading(true);

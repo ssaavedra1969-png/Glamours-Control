@@ -29,7 +29,7 @@ export default function Auditoria() {
 
   const loadData = async () => {
     setLoading(true);
-    try { setLogs(await mockDB.getAuditoria()); } catch {} finally { setLoading(false); }
+    try { setLogs(await mockDB.getAuditoria(500)); } catch {} finally { setLoading(false); }
   };
 
   const modulos = [...new Set(logs.map((l) => l.modulo))];
@@ -73,7 +73,7 @@ export default function Auditoria() {
           </div>
           <div>
             <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Registro de Auditoria</h2>
-            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Trazabilidad completa de acciones en el sistema</p>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Ultimos {logs.length} registros (ahorro de cuota) | Trazabilidad del sistema</p>
           </div>
         </div>
 

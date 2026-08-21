@@ -1,7 +1,7 @@
 import { db } from '../config/firebase';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
-  query, where, writeBatch, getDoc, setDoc, limit as firestoreLimit,
+  query, where, writeBatch, getDoc, setDoc, limit as firestoreLimit, orderBy,
   getCountFromServer,
 } from 'firebase/firestore';
 import { processData, separarDuplicadosInternos } from '../utils/excelParser';
@@ -370,7 +370,12 @@ class FirestoreDB {
     return { id: ref.id, ...docData };
   }
 
-  async getAuditoria() {
+  async getAuditoria(limite) {
+    if (limite) {
+      // Solo los ultimos N registros (1 lectura por doc, ahorra cuota)
+      const snap = await getDocs(query(col('auditoria'), orderBy('creado', 'desc'), firestoreLimit(limite)));
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
     return getAllRaw('auditoria');
   }
 
