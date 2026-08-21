@@ -1,6 +1,6 @@
 import { useState, useEffect, Fragment } from 'react';
 import { Plus, Download, Trash2, Edit3, ChevronDown, ChevronRight, Wallet, Filter, RefreshCw } from 'lucide-react';
-import mockDB from '../services/firestoreDB';
+import mockDB, { SALDO_VERSION } from '../services/firestoreDB';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
 import { today, defaultDateFrom, defaultDateTo } from '../utils/dateUtils';
@@ -23,7 +23,7 @@ export default function Caja() {
   const [form, setForm] = useState({ tipo: 'Ingreso en Caja', categoria: 'Blanco', monto: '', descripcion: '' });
   const [editForm, setEditForm] = useState({ id: '', tipo: '', categoria: '', monto: '', descripcion: '' });
   const [cierreForm, setCierreForm] = useState({ saldo_real_blanco: '', saldo_real_negro: '', observaciones: '' });
-  const [stats, setStats] = useState({ saldo_blanco: 0, saldo_negro: 0, ingresos_hoy: 0, egresos_hoy: 0 });
+  const [stats, setStats] = useState({ saldo_blanco: 0, saldo_negro: 0, ingresos_hoy: 0, retiros_hoy: 0 });
   const [expandedDates, setExpandedDates] = useState({});
   const [ventasDelDia, setVentasDelDia] = useState({});
   const [ventasExpanded, setVentasExpanded] = useState({});
@@ -66,8 +66,8 @@ export default function Caja() {
       });
       setVentasDelDia(ventasPorDia);
 
-      const SALDO_VERSION = 5;
-      if ((saldos._version || 0) < SALDO_VERSION) {
+      const SALDO_VERSION_MIN = SALDO_VERSION;
+      if ((saldos._version || 0) < SALDO_VERSION_MIN) {
         const result = await mockDB.recalcularSaldosCompletos();
         toast.success(`Saldos recalculados (${result.total} registros)`, { duration: 4000 });
         setStats((prev) => ({ ...prev, saldo_blanco: result.blanco, saldo_negro: result.negro }));
@@ -89,8 +89,10 @@ export default function Caja() {
     const items = groupedByDate[date] || [];
     const ingresos = items.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
     const egresos = items.filter((m) => m.codigo === 501).reduce((s, m) => s + m.monto, 0);
-    const blanco = items.filter((m) => m.categoria === 'Blanco').reduce((s, m) => s + (m.codigo === 502 ? m.monto : -m.monto), 0);
-    const negro = items.filter((m) => m.categoria === 'Negro').reduce((s, m) => s + (m.codigo === 502 ? m.monto : -m.monto), 0);
+    // Mismo criterio que el motor de saldos: 500 no afecta, 502 suma, 501 y 503 restan
+    const multOf = (m) => (m.codigo === 500 ? 0 : m.codigo === 501 || m.codigo === 503 ? -1 : 1);
+    const blanco = items.filter((m) => m.categoria === 'Blanco').reduce((s, m) => s + m.monto * multOf(m), 0);
+    const negro = items.filter((m) => m.categoria === 'Negro').reduce((s, m) => s + m.monto * multOf(m), 0);
     return { count: items.length, ingresos, egresos, blanco, negro };
   };
 
@@ -184,13 +186,13 @@ export default function Caja() {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
       {/* ============================================ */}
       {/* SECCION 1: SALDOS                          */}
       {/* ============================================ */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
           <div style={{
             width: '42px', height: '42px', borderRadius: '12px',
             background: 'linear-gradient(135deg, #facc15 0%, #f59e0b 100%)',
@@ -204,28 +206,49 @@ export default function Caja() {
           </div>
         </div>
 
-        {/* Card principal: Saldo total */}
-        <div style={{
-          background: 'linear-gradient(135deg, #854d0e 0%, #a16207 40%, #ca8a04 100%)',
-          borderRadius: '16px', padding: '2rem 2.5rem',
-          border: '1px solid rgba(250,204,21,0.3)',
-          position: 'relative', overflow: 'hidden',
-          marginBottom: '1.25rem',
-        }}>
-          <div style={{ position: 'absolute', top: '-30px', right: '-30px', fontSize: '8rem', opacity: 0.04, fontWeight: '900' }}>$</div>
-          <div style={{ fontSize: '0.8rem', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
-            Saldo Total en Caja
+        {/* Fila de heroes */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1rem' }}>
+          {/* Hero: Saldo Total */}
+          <div style={{
+            background: 'linear-gradient(135deg, #854d0e 0%, #a16207 40%, #ca8a04 100%)',
+            borderRadius: '16px', padding: '1.75rem 2rem',
+            border: '1px solid rgba(250,204,21,0.3)',
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.04, fontWeight: '900' }}>$</div>
+            <div style={{ fontSize: '0.75rem', color: '#fde68a', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
+              Saldo Total en Caja
+            </div>
+            <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#fff', lineHeight: '1.1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+              {formatCurrency(stats.saldo_blanco + stats.saldo_negro)}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
+              Blanco: {formatCurrency(stats.saldo_blanco)} | Negro: {formatCurrency(stats.saldo_negro)}
+            </div>
           </div>
-          <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#fff', lineHeight: '1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
-            {formatCurrency(stats.saldo_blanco + stats.saldo_negro)}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
-            Blanco: {formatCurrency(stats.saldo_blanco)} | Negro: {formatCurrency(stats.saldo_negro)}
+
+          {/* Hero: Ingresos de hoy */}
+          <div style={{
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            border: '1px solid rgba(212,175,55,0.2)',
+            borderRadius: '16px', padding: '1.75rem 2rem',
+            position: 'relative', overflow: 'hidden',
+          }}>
+            <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.03, fontWeight: '900' }}>+</div>
+            <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
+              Ingresos de Hoy (502)
+            </div>
+            <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#10b981', lineHeight: '1.1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+              {formatCurrency(stats.ingresos_hoy)}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: stats.retiros_hoy > 0 ? '#fb923c' : 'rgba(255,255,255,0.5)' }}>
+              Retiros de hoy: -{formatCurrency(stats.retiros_hoy)}
+            </div>
           </div>
         </div>
 
         {/* Cards secundarias */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
           <div style={{
             background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
             borderRadius: '14px', padding: '1.25rem',
@@ -254,36 +277,6 @@ export default function Caja() {
               </div>
             </div>
             <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.saldo_negro)}</div>
-          </div>
-
-          <div style={{
-            background: 'linear-gradient(135deg, #022c22 0%, #064e3b 100%)',
-            borderRadius: '14px', padding: '1.25rem',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: '1.2rem' }}>📈</span>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#6ee7b7', lineHeight: '1.2' }}>Ingresos Hoy</div>
-                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>502 - Ingreso en Caja</div>
-              </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#10b981', lineHeight: '1' }}>{formatCurrency(stats.ingresos_hoy)}</div>
-          </div>
-
-          <div style={{
-            background: 'linear-gradient(135deg, #4a1a00 0%, #7c2d12 100%)',
-            borderRadius: '14px', padding: '1.25rem',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: '1.2rem' }}>💸</span>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fdba74', lineHeight: '1.2' }}>Retiro de Caja</div>
-                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>503 - Efectivo Retirado</div>
-              </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fb923c', lineHeight: '1' }}>{formatCurrency(stats.retiros_hoy)}</div>
           </div>
         </div>
       </section>
@@ -352,7 +345,7 @@ export default function Caja() {
       {/* SECCION 3: MOVIMIENTOS POR DIA             */}
       {/* ============================================ */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
           <div style={{
             width: '42px', height: '42px', borderRadius: '12px',
             background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
@@ -472,8 +465,8 @@ export default function Caja() {
                                     <td style={{ padding: '0.6rem 0.5rem' }}>
                                       <span style={{
                                         fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px',
-                                        background: m.codigo === 501 ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)',
-                                        color: m.codigo === 501 ? '#ef4444' : '#10b981',
+                                        background: m.codigo === 500 ? 'rgba(156,163,175,0.12)' : m.codigo === 501 ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)',
+                                        color: m.codigo === 500 ? '#9ca3af' : m.codigo === 501 ? '#ef4444' : '#10b981',
                                       }}>
                                         {m.tipo} ({m.codigo})
                                       </span>
@@ -482,8 +475,8 @@ export default function Caja() {
                                     <td style={{ padding: '0.6rem 0.5rem' }}>
                                       <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#6b7280', background: 'rgba(255,255,255,0.05)', padding: '0.15rem 0.5rem', borderRadius: '4px' }}>{m.origen}</span>
                                     </td>
-                                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: m.codigo === 501 ? '#ef4444' : '#10b981', fontWeight: '800', fontSize: '0.85rem' }}>
-                                      {m.codigo === 502 && totalVentasEfectivo > 0 ? `+${formatCurrency(totalVentasEfectivo)}` : `${m.codigo === 501 ? '-' : '+'}${formatCurrency(m.monto)}`}
+                                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: m.codigo === 500 ? '#9ca3af' : m.codigo === 501 ? '#ef4444' : '#10b981', fontWeight: '800', fontSize: '0.85rem' }}>
+                                      {m.codigo === 500 ? formatCurrency(m.monto) : `${m.codigo === 501 ? '-' : '+'}${formatCurrency(m.monto)}`}
                                     </td>
                                     <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#d4af37', fontWeight: '700', fontSize: '0.82rem' }}>{formatCurrency(m.saldo_nuevo)}</td>
                                     <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>

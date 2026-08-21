@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
 import {
   LayoutDashboard, Wallet, ShoppingCart, Upload, FileBarChart,
   Settings, Lock, ShieldCheck, Menu, X
@@ -61,7 +60,7 @@ export default function Layout() {
         />
       )}
 
-      <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
+      <aside className={`sidebar nav-fx ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">G</div>
           <div className="sidebar-brand">
@@ -109,10 +108,10 @@ export default function Layout() {
             <h1 className="topbar-title">{SECTION_TITLES[location.pathname] || 'GLAMOUR\'S'}</h1>
           </div>
           <div className="topbar-right">
-            <div className="topbar-status">Operativo</div>
             <div className="topbar-datetime">
-              <div className="topbar-date">{format(now, "dd/MM/yyyy", { locale: es })}</div>
-              <div className="topbar-time">{format(now, 'HH:mm:ss')}</div>
+              <span className="topbar-date">{format(now, 'dd/MM/yyyy')}</span>
+              <span className="topbar-sep" />
+              <span className="topbar-time">{format(now, 'HH:mm:ss')}</span>
             </div>
           </div>
         </header>

@@ -1,8 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    function logueado() {
+      return request.auth != null;
+    }
+    function miPerfilExiste() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+    function esAdmin() {
+      return logueado()
+        && miPerfilExiste()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.rol == 'admin';
+    }
+
+    // Perfiles de usuario: todos leen; cada uno crea SU PROPIO perfil (auto-migracion);
+    // modificar/borrar perfiles solo admin.
+    match /users/{docId} {
+      allow read: if logueado();
+      allow create: if logueado() && docId == request.auth.uid;
+      allow update, delete: if esAdmin();
+    }
+
+    // Resto de la base: hay que estar logueado para leer/escribir.
+    // BORRAR registros solo el admin (Caja, Ventas, etc.).
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read: if logueado();
+      allow create, update: if logueado();
+      allow delete: if esAdmin();
     }
   }
 }

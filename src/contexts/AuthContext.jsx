@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
         } catch (e) {
           console.warn('No se pudo leer perfil de usuario:', e);
         }
+        await firestoreDB.ensurePerfilUid(userData).catch(() => {});
         setUser(userData);
       } else {
         setUser(null);
@@ -62,6 +63,7 @@ export function AuthProvider({ children }) {
         userData.nombre = found.nombre || userData.nombre;
       }
     } catch (e) { /* first user */ }
+    await firestoreDB.ensurePerfilUid(userData).catch(() => {});
     await firestoreDB.addAuditLog(email, 'Inicio de sesión', 'Auth', 'Login exitoso');
     return userData;
   };

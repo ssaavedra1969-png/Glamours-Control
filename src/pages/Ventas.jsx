@@ -7,6 +7,7 @@ import { today, defaultDateFrom, defaultDateTo } from '../utils/dateUtils';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/exportUtils';
 import { useSortableData } from '../hooks/useSortableData';
 import DateFilter from '../components/DateFilter';
+import { classificarVenta, VENTA_TYPES as TYPES, VENTA_TYPE_CFG as TIPO_CFG, VENTA_BADGES as BADGES } from '../utils/ventaTypes';
 import toast from 'react-hot-toast';
 
 const TARJETAS = ['Visa - Banco Nacion', 'Mastercard - Banco Galicia', 'Visa - Banco Santander', 'Amex - BBVA', 'Cabal - Banco Macro', 'Naranja'];
@@ -21,7 +22,7 @@ export default function Ventas() {
   const [dateTo, setDateTo] = useState(defaultDateTo());
   const [showModal, setShowModal] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [stats, setStats] = useState({ blanco: 0, negro: 0, tarjeta: 0, total: 0 });
+  const [stats, setStats] = useState({ blanco: 0, negro: 0, tarjeta_credito: 0, debito: 0, transferencia: 0, total: 0 });
   const [form, setForm] = useState({ categoria: 'Blanco', monto: '', descripcion: '', banco: TARJETAS[0], cuotas: '1' });
   const [editForm, setEditForm] = useState({ id: '', categoria: '', monto: '', descripcion: '', banco: '', cuotas: '' });
   const [expandedDates, setExpandedDates] = useState({});
@@ -32,9 +33,7 @@ export default function Ventas() {
 
   useEffect(() => {
     let result = [...ventas];
-    if (filter === 'Blanco') result = result.filter((v) => v.categoria === 'Blanco');
-    else if (filter === 'Negro') result = result.filter((v) => v.categoria === 'Negro');
-    else if (filter === 'Tarjeta') result = result.filter((v) => v.medio_pago === 'Tarjeta');
+    if (filter !== 'todos') result = result.filter((v) => classificarVenta(v) === filter);
     setFiltered(result);
   }, [ventas, filter]);
 
@@ -43,10 +42,10 @@ export default function Ventas() {
     try {
       const data = await mockDB.getVentas(dateFrom || undefined, dateTo || undefined);
       setVentas(data);
-      const blanco = data.filter((v) => v.categoria === 'Blanco').reduce((s, v) => s + v.monto, 0);
-      const negro = data.filter((v) => v.categoria === 'Negro').reduce((s, v) => s + v.monto, 0);
-      const tarjeta = data.filter((v) => v.medio_pago === 'Tarjeta').reduce((s, v) => s + v.monto, 0);
-      setStats({ blanco, negro, tarjeta, total: blanco + negro + tarjeta });
+      const st = { blanco: 0, negro: 0, tarjeta_credito: 0, debito: 0, transferencia: 0 };
+      data.forEach((v) => { st[classificarVenta(v)] += v.monto; });
+      st.total = TYPES.reduce((s, t) => s + st[t], 0);
+      setStats(st);
     } catch (err) { console.error('Error cargando ventas:', err); toast.error('Error al cargar ventas: ' + (err.message || err.code || 'desconocido')); }
     finally { setLoading(false); }
   };
@@ -62,13 +61,19 @@ export default function Ventas() {
 
   const dayStats = (date) => {
     const items = groupedByDate[date] || [];
-    const total = items.reduce((s, v) => s + v.monto, 0);
-    const blanco = items.filter((v) => v.categoria === 'Blanco').reduce((s, v) => s + v.monto, 0);
-    const negro = items.filter((v) => v.categoria === 'Negro').reduce((s, v) => s + v.monto, 0);
-    const tarjeta = items.filter((v) => v.medio_pago === 'Tarjeta').reduce((s, v) => s + v.monto, 0);
-    const count = items.length;
-    return { total, blanco, negro, tarjeta, count };
+    const t = { blanco: 0, negro: 0, tarjeta_credito: 0, debito: 0, transferencia: 0 };
+    items.forEach((v) => { t[classificarVenta(v)] += v.monto; });
+    return { ...t, total: items.reduce((s, v) => s + v.monto, 0), count: items.length };
   };
+
+  // Desglose por banco para las cards de tipo
+  const porBanco = {};
+  TYPES.forEach((t) => { porBanco[t] = {}; });
+  filtered.forEach((v) => {
+    const k = classificarVenta(v);
+    const brand = v.banco || (k === 'blanco' || k === 'negro' ? 'Efectivo' : 'Otro');
+    porBanco[k][brand] = (porBanco[k][brand] || 0) + v.monto;
+  });
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -136,13 +141,13 @@ export default function Ventas() {
   const editEsTarjeta = editForm.categoria === 'Tarjeta';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
       {/* ============================================ */}
       {/* SECCION 1: RESUMEN DE VENTAS                */}
       {/* ============================================ */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
           <div style={{
             width: '42px', height: '42px', borderRadius: '12px',
             background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
@@ -156,72 +161,57 @@ export default function Ventas() {
           </div>
         </div>
 
-        {/* Card principal: Total */}
+        {/* Hero: Total */}
         <div style={{
           background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
           border: '1px solid rgba(212,175,55,0.2)',
-          borderRadius: '16px', padding: '2rem 2.5rem',
+          borderRadius: '16px', padding: '1.75rem 2rem',
           position: 'relative', overflow: 'hidden',
-          marginBottom: '1.25rem',
         }}>
-          <div style={{ position: 'absolute', top: '-30px', right: '-30px', fontSize: '8rem', opacity: 0.03, fontWeight: '900' }}>$</div>
-          <div style={{ fontSize: '0.8rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
-            Total Ventas
+          <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.03, fontWeight: '900' }}>$</div>
+          <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
+            Total Ventas del Periodo
           </div>
-          <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#d4af37', lineHeight: '1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+          <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#d4af37', lineHeight: '1.1', letterSpacing: '-0.02em' }}>
             {formatCurrency(stats.total)}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-            Blanco: {formatCurrency(stats.blanco)} | Negro: {formatCurrency(stats.negro)} | Tarjeta: {formatCurrency(stats.tarjeta)}
           </div>
         </div>
 
-        {/* Cards por tipo */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
-          <div style={{
-            background: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
-            borderRadius: '14px', padding: '1.25rem',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: '1.2rem' }}>💵</span>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#e2e8f0', lineHeight: '1.2' }}>Efectivo Blanco</div>
-                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>Declarado oficialmente</div>
-              </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.blanco)}</div>
-          </div>
+        {/* Cards por tipo (5) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+          {TYPES.map((tipo) => {
+            const cfg = TIPO_CFG[tipo];
+            const val = stats[tipo];
+            const subItems = Object.entries(porBanco[tipo]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
 
-          <div style={{
-            background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
-            borderRadius: '14px', padding: '1.25rem',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: '1.2rem' }}>🖤</span>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#c4b5fd', lineHeight: '1.2' }}>Efectivo Negro</div>
-                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>No declarado</div>
-              </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.negro)}</div>
-          </div>
+            return (
+              <div key={tipo} style={{
+                background: cfg.gradient,
+                borderRadius: '14px', padding: '1.25rem',
+                border: '1px solid rgba(255,255,255,0.06)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <span style={{ fontSize: '1.2rem' }}>{cfg.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: '700', fontSize: '0.85rem', color: cfg.color, lineHeight: '1.2' }}>{cfg.label}</div>
+                    <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>{cfg.desc}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(val)}</div>
 
-          <div style={{
-            background: 'linear-gradient(135deg, #422006 0%, #78350f 100%)',
-            borderRadius: '14px', padding: '1.25rem',
-            border: '1px solid rgba(255,255,255,0.06)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <span style={{ fontSize: '1.2rem' }}>💳</span>
-              <div>
-                <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fbbf24', lineHeight: '1.2' }}>Tarjeta</div>
-                <div style={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: '1.2' }}>Credito / Debito</div>
+                {subItems.length > 0 && (
+                  <div style={{ marginTop: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '0.6rem' }}>
+                    {subItems.slice(0, 4).map(([brand, monto]) => (
+                      <div key={brand} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.15rem 0' }}>
+                        <span style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{brand}</span>
+                        <span style={{ fontSize: '0.75rem', color: cfg.color, fontWeight: '600' }}>{formatCurrency(monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-            <div style={{ fontSize: '1.6rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>{formatCurrency(stats.tarjeta)}</div>
-          </div>
+            );
+          })}
         </div>
       </section>
 
@@ -259,9 +249,11 @@ export default function Ventas() {
           <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
             {[
               { key: 'todos', label: 'Todos' },
-              { key: 'Blanco', label: 'Blanco', color: '#e2e8f0' },
-              { key: 'Negro', label: 'Negro', color: '#a78bfa' },
-              { key: 'Tarjeta', label: 'Tarjeta', color: '#fbbf24' },
+              { key: 'blanco', label: 'Blanco', color: '#e2e8f0' },
+              { key: 'negro', label: 'Negro', color: '#a78bfa' },
+              { key: 'tarjeta_credito', label: 'Tarjeta', color: '#fbbf24' },
+              { key: 'debito', label: 'Débito', color: '#60a5fa' },
+              { key: 'transferencia', label: 'QR', color: '#34d399' },
             ].map((f) => (
               <button key={f.key} className={`btn btn-outline btn-sm ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}
                 style={{ fontSize: '0.75rem', borderColor: filter === f.key ? f.color : undefined, color: filter === f.key ? f.color : undefined }}>
@@ -278,7 +270,7 @@ export default function Ventas() {
       {/* SECCION 3: MOVIMIENTOS POR DIA             */}
       {/* ============================================ */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
           <div style={{
             width: '42px', height: '42px', borderRadius: '12px',
             background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
@@ -353,9 +345,19 @@ export default function Ventas() {
                         N: {formatCurrency(ds.negro)}
                       </span>
                     )}
-                    {ds.tarjeta > 0 && (
+                    {ds.tarjeta_credito > 0 && (
                       <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#fbbf24', background: 'rgba(251,191,36,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
-                        T: {formatCurrency(ds.tarjeta)}
+                        TC: {formatCurrency(ds.tarjeta_credito)}
+                      </span>
+                    )}
+                    {ds.debito > 0 && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#60a5fa', background: 'rgba(96,165,250,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
+                        D: {formatCurrency(ds.debito)}
+                      </span>
+                    )}
+                    {ds.transferencia > 0 && (
+                      <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#34d399', background: 'rgba(52,211,153,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
+                        QR: {formatCurrency(ds.transferencia)}
                       </span>
                     )}
                     <span style={{ fontSize: '0.9rem', fontWeight: '900', color: '#d4af37', marginLeft: '0.25rem' }}>
@@ -385,12 +387,10 @@ export default function Ventas() {
                         {(groupedByDate[date] || []).map((v) => (
                           <tr key={v.id} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                             <td style={{ padding: '0.6rem 0.5rem' }}>
-                              {v.medio_pago === 'Tarjeta'
-                                ? <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>Tarjeta</span>
-                                : v.categoria === 'Blanco'
-                                  ? <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(209,213,219,0.12)', color: '#e2e8f0' }}>Blanco</span>
-                                  : <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(129,140,248,0.12)', color: '#a78bfa' }}>Negro</span>
-                              }
+                              {(() => {
+                                const [label, bg, color] = BADGES[classificarVenta(v)];
+                                return <span style={{ fontSize: '0.72rem', fontWeight: '700', padding: '0.2rem 0.6rem', borderRadius: '6px', background: bg, color }}>{label}</span>;
+                              })()}
                             </td>
                             <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{v.medio_pago}</td>
                             <td style={{ padding: '0.6rem 0.5rem', color: '#9ca3af', fontSize: '0.82rem' }}>{v.banco || '-'}</td>

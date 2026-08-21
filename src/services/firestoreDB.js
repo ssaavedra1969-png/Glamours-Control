@@ -2,27 +2,74 @@ import { db } from '../config/firebase';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
   query, where, writeBatch, getDoc, setDoc, limit as firestoreLimit,
+  getCountFromServer,
 } from 'firebase/firestore';
-import { processData } from '../utils/excelParser';
+import { processData, separarDuplicadosInternos } from '../utils/excelParser';
 
 function col(name) { return collection(db, name); }
 function docRef(name, id) { return doc(db, name, id); }
 
+// Evita cuelgues eternos: si Firebase no responde en X segundos, falla con
+// un mensaje accionable (tipicamente emulador apagado).
+function conTimeout(promesa, ms = 15000) {
+  return Promise.race([
+    promesa,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Sin respuesta de Firebase (emulador en localhost:8080?). Verifica que este corriendo "firebase emulators:start".')), ms)),
+  ]);
+}
+
 const ESTADO_DOC = 'caja';
+
+// ============================================================
+//  FORMULA UNICA DE SALDOS (usar SIEMPRE esta funcion)
+//  500 "En caja"       -> ANCLA: fija el saldo = monto (conteo fisico real,
+//                         "saldo del dia anterior"). No se suma ni se resta.
+//  501 "Egreso"        -> resta (sale dinero de la caja)
+//  502 "Ingreso"       -> suma (entra dinero a la caja)
+//  503 "Retiro"        -> resta (el efectivo sale fisicamente de la caja)
+//  Ejemplo verificado con datos reales (TEST_CAJA.xlsx):
+//    18/08: 500=45000, 502=33300, 501=15000, 503=15000 -> cierre 48300
+//    19/08: 500=48300 (coincide), 502=12000 -> saldo 60300
+// ============================================================
+export const SALDO_VERSION = 6;
 
 async function getAllRaw(collectionName) {
   const snap = await getDocs(col(collectionName));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
-// Calcula saldos ordenando por creado (cronológico) por categoria.
+function aplicarMovimiento(saldos, cat, codigo, monto) {
+  const anterior = saldos[cat];
+  let nuevo;
+  if (codigo === 500) {
+    nuevo = monto;
+  } else {
+    const mult = codigo === 501 || codigo === 503 ? -1 : 1;
+    nuevo = anterior + monto * mult;
+  }
+  saldos[cat] = nuevo;
+  return { anterior, nuevo };
+}
+
+// Orden cronologico canonico: por fecha; dentro del mismo dia la ancla 500
+// ("En caja", apertura/conteo fisico) va PRIMERO para fijar el saldo antes de
+// aplicar los movimientos de ese dia (en los Excels historicos el 500 a veces
+// aparece al final del dia). Desempate estable por creado.
+function compararCronologico(a, b) {
+  if ((a.fecha || '') !== (b.fecha || '')) return (a.fecha || '').localeCompare(b.fecha || '');
+  const pa = a.codigo === 500 ? 0 : 1;
+  const pb = b.codigo === 500 ? 0 : 1;
+  if (pa !== pb) return pa - pb;
+  return (a.creado || '').localeCompare(b.creado || '');
+}
+
+// Calcula saldos en orden canonico por categoria.
 function computeSaldos(list) {
-  const sorted = [...list].sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
+  const sorted = [...list].sort(compararCronologico);
   const saldos = { Blanco: 0, Negro: 0 };
   for (const m of sorted) {
     const cat = m.categoria || 'Blanco';
-    const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
-    saldos[cat] += m.monto * mult;
+    aplicarMovimiento(saldos, cat, m.codigo, m.monto);
   }
   return saldos;
 }
@@ -80,10 +127,9 @@ class FirestoreDB {
   async addCajaMovimiento(mov) {
     const categoria = mov.categoria || 'Blanco';
     const lastSaldo = await this._getLastSaldo(categoria);
-    const mult = mov.codigo === 501 ? -1 : mov.codigo === 503 ? 0 : 1;
-    const nuevoSaldo = lastSaldo + mov.monto * mult;
-    if (nuevoSaldo < 0) {
-      throw new Error(`Saldo insuficiente. Saldo actual: ${lastSaldo}, movimiento: ${mov.monto * mult}`);
+    const { nuevo: nuevoSaldo } = aplicarMovimiento({ [categoria]: lastSaldo }, categoria, mov.codigo, mov.monto);
+    if (mov.codigo !== 500 && nuevoSaldo < 0) {
+      throw new Error(`Saldo insuficiente. Saldo actual: ${lastSaldo}, movimiento: ${mov.monto}`);
     }
     const docData = {
       fecha: mov.fecha, tipo: mov.tipo, codigo: mov.codigo,
@@ -92,9 +138,9 @@ class FirestoreDB {
       origen: mov.origen || 'manual', creado: new Date().toISOString(),
     };
     const ref = await addDoc(col('caja'), docData);
-    const saldos = await this.getEstadoSaldos();
-    saldos[categoria] = nuevoSaldo;
-    await this.setEstadoSaldos(saldos);
+    const saldosEstado = await this.getEstadoSaldos();
+    saldosEstado[categoria] = nuevoSaldo;
+    await this.setEstadoSaldos(saldosEstado);
     return { id: ref.id, ...docData };
   }
 
@@ -104,21 +150,16 @@ class FirestoreDB {
 
     const newSorted = movimientos.map((m, i) => ({
       ...m, creado: `${m.fecha}T${String(20 + i).padStart(2, '0')}:00:00`,
-    })).sort((a, b) => {
-      if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
-      return (a.creado || '').localeCompare(b.creado || '');
-    });
+    })).sort(compararCronologico);
 
     const newDocs = [];
     for (const item of newSorted) {
       const cat = item.categoria || 'Blanco';
-      const mult = item.codigo === 501 ? -1 : item.codigo === 503 ? 0 : 1;
-      const anterior = saldos[cat];
-      saldos[cat] += item.monto * mult;
+      const { anterior, nuevo } = aplicarMovimiento(saldos, cat, item.codigo, item.monto);
       newDocs.push({
         fecha: item.fecha, tipo: item.tipo, codigo: item.codigo,
         categoria: cat, descripcion: item.descripcion, monto: item.monto,
-        saldo_anterior: anterior, saldo_nuevo: saldos[cat],
+        saldo_anterior: anterior, saldo_nuevo: nuevo,
         origen: item.origen || 'excel', creado: item.creado,
       });
     }
@@ -175,10 +216,10 @@ class FirestoreDB {
     let all;
     if (onlyCategoria) {
       const snap = await getDocs(query(col('caja'), where('categoria', '==', onlyCategoria)));
-      all = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
+      all = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(compararCronologico);
     } else {
       const allSnap = await getDocs(col('caja'));
-      all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
+      all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(compararCronologico);
     }
     const estado = await this.getEstadoSaldos();
     const saldos = onlyCategoria
@@ -188,13 +229,10 @@ class FirestoreDB {
     let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
-      const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
-      const anterior = saldos[cat];
-      saldos[cat] += m.monto * mult;
-      if (saldos[cat] < 0) saldos[cat] = 0;
+      const { anterior, nuevo } = aplicarMovimiento(saldos, cat, m.codigo, m.monto);
       // Solo escribimos si el saldo realmente cambio (evita reescribir toda la coleccion)
-      if (m.saldo_anterior !== anterior || m.saldo_nuevo !== saldos[cat]) {
-        batch.update(docRef('caja', m.id), { saldo_anterior: anterior, saldo_nuevo: saldos[cat] });
+      if (m.saldo_anterior !== anterior || m.saldo_nuevo !== nuevo) {
+        batch.update(docRef('caja', m.id), { saldo_anterior: anterior, saldo_nuevo: nuevo });
         count++;
         if (count % 500 === 0) {
           await batch.commit();
@@ -203,7 +241,7 @@ class FirestoreDB {
       }
     }
     if (count % 500 !== 0) await batch.commit();
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 5 });
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: SALDO_VERSION });
   }
 
   async getVentas(fechaInicio, fechaFin) {
@@ -372,8 +410,38 @@ class FirestoreDB {
 
   async addUser(userData) {
     const docData = { creado: new Date().toISOString(), ...userData };
+    // Doc con ID = uid: las reglas de Firestore verifican el rol leyendo users/{uid}
+    if (userData.uid) {
+      await setDoc(docRef('users', userData.uid), docData);
+      return { id: userData.uid, ...docData };
+    }
     const ref = await addDoc(col('users'), docData);
     return { id: ref.id, ...docData };
+  }
+
+  // Asegura que exista el perfil con ID = uid para el usuario logueado.
+  // Migra automaticamente el formato viejo (ID automatico + campo uid).
+  async ensurePerfilUid(perfil) {
+    try {
+      const ref = docRef('users', perfil.uid);
+      const snap = await getDoc(ref);
+      if (snap.exists()) return snap.data();
+      const all = await getAllRaw('users');
+      const legacy = all.find((u) => u.uid === perfil.uid || u.email === perfil.email);
+      const data = {
+        uid: perfil.uid,
+        email: perfil.email,
+        nombre: legacy?.nombre || perfil.nombre,
+        rol: legacy?.rol || perfil.rol,
+        creado: legacy?.creado || new Date().toISOString(),
+        migrado: new Date().toISOString(),
+      };
+      await setDoc(ref, data);
+      return data;
+    } catch (e) {
+      console.warn('ensurePerfilUid:', e?.message || e);
+      return null;
+    }
   }
 
   async addAuditLog(usuario, accion, modulo, detalle) {
@@ -382,14 +450,9 @@ class FirestoreDB {
 
   async recalcularSaldosCompletos() {
     const allSnap = await getDocs(col('caja'));
-    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.creado || '').localeCompare(b.creado || ''));
-    const saldos = { Blanco: 0, Negro: 0 };
-    for (const m of all) {
-      const cat = m.categoria || 'Blanco';
-      const mult = m.codigo === 501 ? -1 : m.codigo === 503 ? 0 : 1;
-      saldos[cat] += m.monto * mult;
-    }
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: 5 });
+    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const saldos = computeSaldos(all);
+    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: SALDO_VERSION });
     return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length, updated: 0 };
   }
 
@@ -397,26 +460,51 @@ class FirestoreDB {
     if (onProgress) onProgress({ phase: 'Analizando filas...', step: 0, total: rawData.length });
     await new Promise((r) => setTimeout(r, 50));
 
-    const result = processData(rawData, null, fileDate);
+    const parsed = processData(rawData, null, fileDate);
+
+    // 1) Duplicados INTERNOS del archivo (dias pegados dos veces al concatenar).
+    //    Se descartan siempre: son artefactos del Excel, no dinero real.
+    const limpio = separarDuplicadosInternos(parsed.caja, parsed.ventas);
+    const result = { ...parsed, caja: limpio.caja, ventas: limpio.ventas };
+    const internos = { caja: limpio.dupCaja.length, ventas: limpio.dupVentas.length };
+    const internosDetalle = { caja: limpio.dupCaja, ventas: limpio.dupVentas };
 
     if (onProgress) onProgress({ phase: 'Detectando duplicados...', step: rawData.length, total: rawData.length });
     await new Promise((r) => setTimeout(r, 50));
 
-    const existingCaja = fileDate ? await this.getCaja(fileDate, fileDate) : await this.getCaja();
-    const existingVentas = fileDate ? await this.getVentas(fileDate, fileDate) : await this.getVentas();
+    // Rango REAL de fechas del archivo: los concatenados abarcan anios y la
+    // fecha del nombre/primera fila no alcanza para cubrir todo.
+    const fechasPresentes = [...result.caja.map((m) => m.fecha), ...result.ventas.map((v) => v.fecha)].sort();
+    const fMin = fechasPresentes[0] || fileDate;
+    const fMax = fechasPresentes[fechasPresentes.length - 1] || fileDate;
+    const [existingCaja, existingVentas] = await Promise.all([
+      conTimeout((fMin && fMax) ? this.getCaja(fMin, fMax) : this.getCaja()),
+      conTimeout((fMin && fMax) ? this.getVentas(fMin, fMax) : this.getVentas()),
+    ]);
 
     const duplicates = { caja: [], ventas: [] };
 
+    // Regla del negocio: solo cuenta como duplicado si coinciden TODOS los campos
+    // (los campos calculados saldo_anterior/saldo_nuevo se excluyen).
     for (const mov of result.caja) {
       const match = existingCaja.find((existing) =>
-        existing.fecha === mov.fecha && existing.monto === mov.monto && existing.codigo === mov.codigo
+        existing.fecha === mov.fecha && existing.tipo === mov.tipo && existing.codigo === mov.codigo
+        && (existing.categoria || '') === (mov.categoria || '')
+        && (existing.descripcion || '') === (mov.descripcion || '')
+        && existing.monto === mov.monto
       );
       if (match) duplicates.caja.push({ incoming: mov, existing: match });
     }
 
     for (const venta of result.ventas) {
       const match = existingVentas.find((existing) =>
-        existing.fecha === venta.fecha && existing.monto === venta.monto && existing.tipo === venta.tipo
+        existing.fecha === venta.fecha && existing.tipo === venta.tipo
+        && (existing.categoria || '') === (venta.categoria || '')
+        && (existing.medio_pago || '') === (venta.medio_pago || '')
+        && (existing.banco || '') === (venta.banco || '')
+        && (existing.descripcion || '') === (venta.descripcion || '')
+        && (existing.cuotas ?? 1) === (venta.cuotas ?? 1)
+        && existing.monto === venta.monto
       );
       if (match) duplicates.ventas.push({ incoming: venta, existing: match });
     }
@@ -455,12 +543,14 @@ class FirestoreDB {
 
     return {
       cajaCount, ventasCount,
-      totalCaja: result.caja.length,
-      totalVentas: result.ventas.length,
+      totalCaja: result.caja.length + internos.caja,
+      totalVentas: result.ventas.length + internos.ventas,
       totalSkipped: result.skipped,
+      internos,
+      internosDetalle,
+      duplicadosBase: { caja: duplicates.caja.length, ventas: duplicates.ventas.length },
       skipped: result.skipped, skippedRows: result.skippedRows, errors: result.errors,
       duplicates,
-      hasDuplicates: duplicates.caja.length > 0 || duplicates.ventas.length > 0,
     };
   }
 
@@ -494,6 +584,44 @@ class FirestoreDB {
         await batch.commit();
       }
     }
+  }
+
+  // Restaura un backup generado por exportAllData. No borra lo existente:
+  // los documentos con el mismo id se sobrescriben, el resto se agrega.
+  async importData(backup) {
+    const collections = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'configuracion', 'users'];
+    let total = 0;
+    for (const name of collections) {
+      const items = backup[name];
+      if (!Array.isArray(items)) continue;
+      let batch = writeBatch(db);
+      let count = 0;
+      for (const item of items) {
+        const { id, ...data } = item;
+        const ref = id ? doc(db, name, id) : doc(collection(db, name));
+        batch.set(ref, data);
+        count++; total++;
+        if (count % 450 === 0) {
+          await batch.commit();
+          batch = writeBatch(db);
+          await new Promise((r) => setTimeout(r, 50));
+        }
+      }
+      if (count % 450 !== 0) await batch.commit();
+    }
+    return total;
+  }
+
+  async getCollectionCounts() {
+    const names = ['caja', 'ventas', 'cierres', 'auditoria'];
+    const counts = {};
+    for (const name of names) {
+      try {
+        const snap = await conTimeout(getCountFromServer(col(name)), 10000);
+        counts[name] = snap.data().count;
+      } catch { counts[name] = -1; }
+    }
+    return counts;
   }
 }
 

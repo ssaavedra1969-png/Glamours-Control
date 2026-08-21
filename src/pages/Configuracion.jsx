@@ -1,93 +1,265 @@
-import { useState, useEffect } from 'react';
-import { Save, Trash2, Users, Percent, DollarSign, Download } from 'lucide-react';
-import mockDB from '../services/firestoreDB';
+import { useState, useEffect, useRef } from 'react';
+import { Settings, Users, UserPlus, Database, Upload, Download, Trash2, Info } from 'lucide-react';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut as fbSignOut, connectAuthEmulator } from 'firebase/auth';
+import { firebaseConfig } from '../config/firebase';
+import mockDB, { SALDO_VERSION } from '../services/firestoreDB';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export default function Configuracion() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [config, setConfig] = useState({ iva: 21, limites_caja: { minimo: 10000, maximo: 200000 } });
   const [users, setUsers] = useState([]);
+  const [counts, setCounts] = useState(null);
+  const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', rol: 'operador' });
+  const fileInputRef = useRef(null);
+  const esEmulador = import.meta.env.VITE_USE_EMULATOR === 'true';
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cfg, u] = await Promise.all([mockDB.getConfiguracion(), mockDB.getUsers()]);
-      setConfig(cfg);
+      const [u, c] = await Promise.all([mockDB.getUsers(), mockDB.getCollectionCounts()]);
       setUsers(u);
+      setCounts(c);
     } catch {}
     finally { setLoading(false); }
   };
 
-  const saveConfig = async () => {
-    await mockDB.updateConfiguracion(config);
-    mockDB.addAuditLog(user.email, 'Modificacion de configuracion', 'Configuracion', JSON.stringify(config));
-    toast.success('Configuracion guardada');
+  const crearUsuario = async () => {
+    if (!nuevoUsuario.email || !nuevoUsuario.password || !nuevoUsuario.nombre) return toast.error('Complete email, contrasena y nombre');
+    if (nuevoUsuario.password.length < 6) return toast.error('La contrasena debe tener al menos 6 caracteres');
+    let secApp;
+    try {
+      toast.loading('Creando usuario...');
+      secApp = initializeApp(firebaseConfig, 'alta-usuario-' + Date.now());
+      const secAuth = getAuth(secApp);
+      if (esEmulador) connectAuthEmulator(secAuth, 'http://localhost:9099', { disableWarnings: true });
+      const cred = await createUserWithEmailAndPassword(secAuth, nuevoUsuario.email.trim(), nuevoUsuario.password);
+      // Perfil ANTES de cerrar la sesion secundaria: las reglas solo permiten
+      // crear el doc users/{uid} del propio usuario autenticado
+      await mockDB.addUser({ uid: cred.user.uid, email: nuevoUsuario.email.trim(), nombre: nuevoUsuario.nombre, rol: nuevoUsuario.rol, creado: new Date().toISOString() });
+      await fbSignOut(secAuth).catch(() => {});
+      mockDB.addAuditLog(user.email, 'Alta de usuario', 'Configuracion', `${nuevoUsuario.email} (${nuevoUsuario.rol})`);
+      toast.dismiss();
+      toast.success('Usuario creado: ' + nuevoUsuario.email);
+      setNuevoUsuario({ email: '', password: '', nombre: '', rol: 'operador' });
+      loadData();
+    } catch (err) {
+      toast.dismiss();
+      if (err.code === 'auth/email-already-in-use') toast.error('Ese email ya esta registrado');
+      else toast.error('Error: ' + err.message);
+    } finally {
+      if (secApp) deleteApp(secApp).catch(() => {});
+    }
   };
 
-  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}><div className="spinner" /></div>;
+  const descargarBackup = async () => {
+    try {
+      toast.loading('Generando backup...');
+      const backup = await mockDB.exportAllData();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      mockDB.addAuditLog(user.email, 'Descarga de backup', 'Configuracion', 'Backup JSON completo');
+      toast.dismiss();
+      toast.success('Backup descargado');
+    } catch (err) {
+      toast.dismiss();
+      toast.error('Error: ' + err.message);
+    }
+  };
+
+  const handleRestaurar = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      const resumen = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'users']
+        .filter((c) => Array.isArray(backup[c]))
+        .map((c) => `${c}: ${backup[c].length}`)
+        .join('\n');
+      const ok = window.confirm(`RESTAURAR BACKUP?\n\nFecha del backup: ${backup._meta?.fecha?.slice(0, 10) || 'desconocida'}\n\n${resumen}\n\nNo se borra nada: los documentos con el mismo id se sobrescriben y el resto se agrega.\n\nContinuar?`);
+      if (!ok) return;
+      toast.loading('Restaurando backup...', { duration: 120000 });
+      const total = await mockDB.importData(backup);
+      mockDB.addAuditLog(user.email, 'Restauracion de backup', 'Configuracion', `${total} documentos`);
+      toast.dismiss();
+      toast.success(`Backup restaurado (${total} documentos)`);
+      loadData();
+    } catch (err) {
+      toast.dismiss();
+      toast.error('Error restaurando: ' + err.message);
+    }
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+      <div className="spinner" />
+    </div>
+  );
+
+  const panelStyle = {
+    background: 'rgba(255,255,255,0.02)',
+    border: '1px solid rgba(255,255,255,0.06)',
+    borderRadius: '14px',
+    padding: '1.5rem',
+  };
+  const panelHeader = (emoji, titulo, subtitulo) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+      <span style={{ fontSize: '1.1rem' }}>{emoji}</span>
+      <div>
+        <div style={{ fontWeight: '800', fontSize: '0.95rem', color: 'var(--text, #f3f4f6)' }}>{titulo}</div>
+        <div style={{ fontSize: '0.7rem', color: '#6b7280' }}>{subtitulo}</div>
+      </div>
+    </div>
+  );
 
   return (
-    <div>
-      {/* IVA */}
-      <div className="card">
-        <div className="card-header"><h2><Percent size={18} /> Impuestos</h2></div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>IVA (%)</label>
-            <input type="number" value={config.iva} onChange={(e) => setConfig({ ...config, iva: parseFloat(e.target.value) || 0 })} min="0" max="100" step="0.5" />
-            <div className="form-hint">Porcentaje de IVA aplicable</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+
+      {/* ============================================ */}
+      {/* SECCION 1: ENCABEZADO                      */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Settings size={20} color="#000" />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Configuracion del Sistema</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Usuarios, copias de seguridad y estado general</p>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Limites Caja */}
-      <div className="card">
-        <div className="card-header"><h2><DollarSign size={18} /> Límites de Caja</h2></div>
-        <div className="form-row">
-          <div className="form-group">
-            <label>Saldo Mínimo ($)</label>
-            <input type="number" value={config.limites_caja.minimo} onChange={(e) => setConfig({ ...config, limites_caja: { ...config.limites_caja, minimo: parseFloat(e.target.value) || 0 } })} min="0" />
-            <div className="form-hint">Alerta cuando el saldo baje de este monto</div>
+      {/* ============================================ */}
+      {/* SECCION 2: GESTION DE USUARIOS             */}
+      {/* ============================================ */}
+      <section>
+        <div style={panelStyle}>
+          {panelHeader('👥', 'Gestion de Usuarios', 'Cuentas con acceso al sistema')}
+          <div className="table-container" style={{ marginBottom: '1.25rem' }}>
+            <table>
+              <thead><tr><th>Email</th><th>Nombre</th><th>Rol</th><th>Creado</th></tr></thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.uid}>
+                    <td>{u.email}</td>
+                    <td>{u.nombre}</td>
+                    <td><span className={`badge ${u.rol === 'admin' ? 'badge-primary' : 'badge-neutral'}`}>{u.rol}</span></td>
+                    <td>{u.creado?.split('T')[0] || '-'}</td>
+                  </tr>
+                ))}
+                {users.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#6b7280', padding: '1.5rem' }}>Sin usuarios registrados</td></tr>}
+              </tbody>
+            </table>
           </div>
-          <div className="form-group">
-            <label>Saldo Máximo ($)</label>
-            <input type="number" value={config.limites_caja.maximo} onChange={(e) => setConfig({ ...config, limites_caja: { ...config.limites_caja, maximo: parseFloat(e.target.value) || 0 } })} min="0" />
-            <div className="form-hint">Alerta cuando el saldo supere este monto</div>
+
+          <div style={{
+            display: 'flex', alignItems: 'flex-end', gap: '0.75rem', flexWrap: 'wrap',
+            borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1rem',
+          }}>
+            <div className="form-group" style={{ margin: 0, minWidth: '200px', flex: '1 1 180px' }}>
+              <label>Email</label>
+              <input type="email" value={nuevoUsuario.email} placeholder="usuario@glamours.com"
+                onChange={(e) => setNuevoUsuario({ ...nuevoUsuario, email: e.target.value })} />
+            </div>
+            <div className="form-group" style={{ margin: 0, minWidth: '140px', flex: '1 1 130px' }}>
+              <label>Contrasena</label>
+              <input type="password" value={nuevoUsuario.password} placeholder="Minimo 6 caracteres"
+                onChange={(e) => setNuevoUsuario({ ...nuevoUsuario, password: e.target.value })} />
+            </div>
+            <div className="form-group" style={{ margin: 0, minWidth: '150px', flex: '1 1 140px' }}>
+              <label>Nombre</label>
+              <input type="text" value={nuevoUsuario.nombre} placeholder="Nombre y apellido"
+                onChange={(e) => setNuevoUsuario({ ...nuevoUsuario, nombre: e.target.value })} />
+            </div>
+            <div className="form-group" style={{ margin: 0, width: '130px' }}>
+              <label>Rol</label>
+              <select value={nuevoUsuario.rol} onChange={(e) => setNuevoUsuario({ ...nuevoUsuario, rol: e.target.value })}>
+                <option value="operador">operador</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+            <button className="btn btn-primary" onClick={crearUsuario} style={{ height: '38px' }}>
+              <UserPlus size={15} /> Crear
+            </button>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Usuarios */}
-      <div className="card">
-        <div className="card-header"><h2><Users size={18} /> Usuarios del Sistema</h2></div>
-        <div className="table-container">
-          <table>
-            <thead><tr><th>Email</th><th>Nombre</th><th>Rol</th><th>Creado</th></tr></thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.uid}>
-                  <td>{u.email}</td>
-                  <td>{u.nombre}</td>
-                  <td><span className={`badge ${u.rol === 'admin' ? 'badge-primary' : 'badge-neutral'}`}>{u.rol}</span></td>
-                  <td>{u.creado?.split('T')[0] || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* ============================================ */}
+      {/* SECCION 3: COPIAS DE SEGURIDAD             */}
+      {/* ============================================ */}
+      <section>
+        <div style={panelStyle}>
+          {panelHeader('🛡️', 'Copias de Seguridad', 'Exportar todo el sistema a JSON y restaurarlo cuando necesites')}
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button className="btn btn-outline" onClick={descargarBackup}><Download size={16} /> Descargar Backup</button>
+            <button className="btn btn-primary" onClick={() => fileInputRef.current?.click()}><Upload size={16} /> Restaurar Backup</button>
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleRestaurar} style={{ display: 'none' }} />
+          </div>
+          <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '1rem', marginBottom: 0 }}>
+            La restauracion agrega/sobrescribe por id sin borrar el resto. Ideal para pasar datos entre la base de prueba y produccion.
+          </p>
         </div>
-      </div>
+      </section>
 
-      {/* Limpiar Datos */}
-      <div className="card" style={{ border: '1px solid rgba(239,68,68,0.3)' }}>
-        <div className="card-header"><h2 style={{ color: 'var(--danger)' }}><Trash2 size={18} /> Zona de Peligro</h2></div>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-          Descarga backup y elimina todos los datos de la aplicacion.
-        </p>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+      {/* ============================================ */}
+      {/* SECCION 4: INFORMACION DEL SISTEMA         */}
+      {/* ============================================ */}
+      <section>
+        <div style={panelStyle}>
+          {panelHeader('📊', 'Informacion del Sistema', 'Estado actual de la base de datos')}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem' }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '0.85rem 1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: '0.65rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>Entorno</div>
+              <div style={{ fontWeight: '800', fontSize: '0.95rem', color: esEmulador ? '#facc15' : '#10b981' }}>{esEmulador ? 'Emulador local' : 'Produccion'}</div>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '0.85rem 1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: '0.65rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>Version formula saldos</div>
+              <div style={{ fontWeight: '800', fontSize: '0.95rem' }}>v{SALDO_VERSION}</div>
+            </div>
+            {[['caja', 'Movimientos caja'], ['ventas', 'Ventas'], ['cierres', 'Cierres'], ['auditoria', 'Registros auditoria']].map(([key, label]) => (
+              <div key={key} style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '10px', padding: '0.85rem 1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ fontSize: '0.65rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.35rem' }}>{label}</div>
+                <div style={{ fontWeight: '800', fontSize: '0.95rem' }}>{counts ? (counts[key] >= 0 ? counts[key].toLocaleString() : 'N/D') : '-'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================ */}
+      {/* SECCION 5: ZONA DE PELIGRO                 */}
+      {/* ============================================ */}
+      <section>
+        <div style={{
+          background: 'rgba(239,68,68,0.04)',
+          border: '1px solid rgba(239,68,68,0.25)',
+          borderRadius: '14px', padding: '1.5rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <Trash2 size={18} color="#ef4444" />
+            <div style={{ fontWeight: '800', fontSize: '0.95rem', color: '#ef4444' }}>Zona de Peligro</div>
+          </div>
+          <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginBottom: '1rem' }}>
+            Descarga un backup y elimina TODOS los datos de la aplicacion. Esta accion no se puede deshacer.
+          </p>
           <button
             className="btn btn-danger"
             onClick={async () => {
@@ -98,17 +270,16 @@ export default function Configuracion() {
                 const backup = await mockDB.exportAllData();
                 toast.loading('Eliminando datos...');
                 await mockDB.deleteAllCollections();
-
                 const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0,10) + '.json';
+                link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0, 10) + '.json';
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
                 URL.revokeObjectURL(url);
-
+                mockDB.addAuditLog(user.email, 'Eliminacion total de datos', 'Configuracion', 'Con backup previo');
                 toast.dismiss();
                 toast.success('Datos eliminados y backup descargado');
                 loadData();
@@ -120,37 +291,8 @@ export default function Configuracion() {
           >
             <Trash2 size={16} /> Eliminar Todo y Descargar Backup
           </button>
-          <button
-            className="btn btn-outline"
-            onClick={async () => {
-              try {
-                toast.loading('Generando backup...');
-                const backup = await mockDB.exportAllData();
-                const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = 'GLAMOURS_BACKUP_' + new Date().toISOString().slice(0,10) + '.json';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                toast.dismiss();
-                toast.success('Backup descargado (sin borrar)');
-              } catch (err) {
-                toast.dismiss();
-                toast.error('Error: ' + err.message);
-              }
-            }}
-          >
-            <Download size={16} /> Solo Descargar Backup
-          </button>
         </div>
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1rem' }}>
-        <button className="btn btn-primary" onClick={saveConfig}><Save size={16} /> Guardar Configuracion</button>
-      </div>
+      </section>
     </div>
   );
 }

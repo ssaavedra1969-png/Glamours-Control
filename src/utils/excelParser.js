@@ -67,19 +67,27 @@ const TIPO_NORMALIZER = {
   'cupon': 'Cupon',
 };
 
-function normalizeColumn(col) {
-  const lower = col.toLowerCase().trim();
-  if (lower === 'descripcion') return 'Descripcion';
-  if (lower === 'descripción') return 'Descripcion';
-  if (lower === 'descripcion_original') return 'Descripcion_original';
-  if (lower === 'descripción original') return 'Descripcion_original';
-  if (lower === 'cuotas') return 'Cuotas';
-  if (lower === 'monto') return 'Monto';
-  if (lower === 'valor') return 'Valor';
-  if (lower === 'tipo') return 'Tipo';
-  if (lower === 'fecha') return 'Fecha';
-  if (lower === 'orden') return 'Orden';
-  return col;
+// Normaliza encabezados tolerando acentos, mayusculas, espacios y guiones.
+// Los archivos de entrada siempre traen las mismas 7 columnas en orden A-G,
+// pero el nombre puede variar levemente (ej: 'Descripción original').
+const COLUMNAS_MAP = {
+  fecha: 'Fecha',
+  tipo: 'Tipo',
+  cuotas: 'Cuotas',
+  descripcion: 'Descripcion',
+  descripcionoriginal: 'Descripcion_original',
+  valor: 'Valor',
+  monto: 'Monto',
+  orden: 'Orden',
+};
+
+function normalizeColumn(colName) {
+  const key = String(colName)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+  return COLUMNAS_MAP[key] || colName;
 }
 
 function normalizeRow(row) {
@@ -400,6 +408,36 @@ export function processData(data, expectedType, fileDate) {
   });
 
   return results;
+}
+
+// Detecta registros repetidos DENTRO del mismo archivo. Los Excels concatenados
+// tienen dias completos pegados dos veces por segmentos superpuestos
+// (ej: TEST CONCATENAR 17/01/2026 aparece entero duplicado). Esos repetidos son
+// artefactos del armado del archivo y NUNCA deben cargarse.
+// Regla del negocio: solo se omite el registro si coinciden TODOS los campos;
+// si alguno difiere, es un movimiento distinto y se carga.
+export function separarDuplicadosInternos(caja, ventas) {
+  const vistosCaja = new Set();
+  const dupCaja = [];
+  const cajaUnicos = [];
+  for (const m of caja) {
+    const k = [m.fecha, m.tipo, m.codigo, m.categoria || '', m.descripcion || '', m.monto].join('|');
+    if (vistosCaja.has(k)) { dupCaja.push(m); continue; }
+    vistosCaja.add(k);
+    cajaUnicos.push(m);
+  }
+
+  const vistosVentas = new Set();
+  const dupVentas = [];
+  const ventasUnicas = [];
+  for (const v of ventas) {
+    const k = [v.fecha, v.tipo, v.categoria || '', v.medio_pago || '', v.banco || '', v.cuotas ?? '', v.descripcion || '', v.monto].join('|');
+    if (vistosVentas.has(k)) { dupVentas.push(v); continue; }
+    vistosVentas.add(k);
+    ventasUnicas.push(v);
+  }
+
+  return { caja: cajaUnicos, ventas: ventasUnicas, dupCaja, dupVentas };
 }
 
 export function validateExcelStructure(data) {

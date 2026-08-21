@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, X, Copy, ChevronDown, ChevronRight, Wallet, ShoppingCart, Layers } from 'lucide-react';
-import mockDB from '../services/firestoreDB';
+import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, X, Wallet, ShoppingCart, Layers, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { parseExcelFile, identifyFileType, identifyFileTypeAndDateFromContent, extractDateFromFilename, validateExcelStructure, processData } from '../utils/excelParser';
-import { formatCurrency } from '../utils/formatCurrency';
+import { parseExcelFile, identifyFileType, identifyFileTypeAndDateFromContent, extractDateFromFilename, validateExcelStructure, processData, separarDuplicadosInternos } from '../utils/excelParser';
+import { suscribirseCarga, obtenerCarga, iniciarCarga, limpiarCarga } from '../services/cargaService';
+import ResultadoCarga from '../components/ResultadoCarga';
 import toast from 'react-hot-toast';
 
 const TABS = [
@@ -17,11 +17,10 @@ export default function CargaExcel() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('caja');
   const [files, setFiles] = useState([]);
-  const [processing, setProcessing] = useState(false);
-  const [results, setResults] = useState([]);
-  const [duplicateDialog, setDuplicateDialog] = useState(null);
-  const [showSkipped, setShowSkipped] = useState({});
-  const [progress, setProgress] = useState(null);
+  const [inspectorCola, setInspectorCola] = useState({});
+  // Estado de carga vivo en el servicio: sobrevive cambios de seccion
+  const [carga, setCarga] = useState(obtenerCarga());
+  useEffect(() => suscribirseCarga((j) => setCarga(j ? { ...j } : null)), []);
 
   const onDrop = useCallback(async (acceptedFiles) => {
     const newFiles = [];
@@ -36,10 +35,13 @@ export default function CargaExcel() {
         }
         const detectedDate = fileDate || (data.length > 0 ? identifyFileTypeAndDateFromContent(data, fileName).date : null);
         const analysis = processData(data, null, detectedDate);
+        const limpio = separarDuplicadosInternos(analysis.caja, analysis.ventas);
         newFiles.push({
           file: f, name: fileName, raw: data, type: detectedType, date: detectedDate, tab: activeTab,
           status: validation.valid ? 'ready' : 'error', error: validation.valid ? null : validation.error,
           totalRows: data.length, cajaRows: analysis.caja.length, ventasRows: analysis.ventas.length,
+          dupInternos: limpio.dupCaja.length + limpio.dupVentas.length,
+          internosDetalle: { caja: limpio.dupCaja, ventas: limpio.dupVentas },
           skippedRows: analysis.skipped, skippedDetails: analysis.skippedRows || [],
           columnas: data.length > 0 ? Object.keys(data[0]).join(', ') : '',
         });
@@ -48,7 +50,6 @@ export default function CargaExcel() {
       }
     }
     setFiles((prev) => [...prev, ...newFiles]);
-    setResults([]);
   }, [activeTab]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -59,109 +60,44 @@ export default function CargaExcel() {
 
   const removeFile = (idx) => setFiles((prev) => prev.filter((_, i) => i !== idx));
 
-  const processFiles = async () => {
+  const processFiles = () => {
     if (files.length === 0) return toast.error('Selecciona archivos primero');
-    setProcessing(true);
-    setProgress({ phase: 'Iniciando...', step: 0, total: 0 });
-    const newResults = [];
-
-    for (const fileObj of files) {
-      try {
-        if (fileObj.status === 'error') {
-          newResults.push({ name: fileObj.name, status: 'error', message: fileObj.error });
-          continue;
-        }
-
-        const result = await mockDB.processExcelFile(fileObj.raw, fileObj.name, fileObj.date, (p) => {
-          setProgress(p);
-        });
-
-        if (result.hasDuplicates) {
-          setDuplicateDialog({
-            fileName: fileObj.name, fileObj, result,
-            duplicates: result.duplicates,
-            remainingFiles: files.filter((_, i) => i !== files.indexOf(fileObj)),
-          });
-          setProcessing(false);
-          setProgress(null);
-          return;
-        }
-
-        newResults.push({ name: fileObj.name, status: 'success', type: fileObj.type, date: fileObj.date, ...result,
-          analyzedCaja: fileObj.cajaRows, analyzedVentas: fileObj.ventasRows, analyzedSkipped: fileObj.skippedRows, analyzedTotal: fileObj.totalRows,
-        });
-        mockDB.addAuditLog(user.email, `Carga de archivo: ${fileObj.name}`, 'Carga', `Caja: ${result.cajaCount}, Ventas: ${result.ventasCount}, Saltados: ${result.skipped}`);
-      } catch (err) {
-        newResults.push({ name: fileObj.name, status: 'error', message: err.message });
-      }
-    }
-
-    setResults(newResults);
+    if (carga && carga.estado === 'procesando') return toast.error('Ya hay una carga en proceso');
+    const lista = [...files];
     setFiles([]);
-    setProcessing(false);
-    setProgress(null);
-    const ok = newResults.filter((r) => r.status === 'success');
-    const err = newResults.filter((r) => r.status === 'error');
-    if (ok.length > 0) toast.success(`${ok.length} archivo(s) procesado(s)`);
-    if (err.length > 0) toast.error(`${err.length} archivo(s) con errores`);
+    // Corre en el servicio de fondo: puede navegarse por otras secciones
+    iniciarCarga(lista, user?.email || 'sistema');
   };
 
-  const handleDuplicateDecision = async (action) => {
-    if (!duplicateDialog) return;
-    const { result, fileObj } = duplicateDialog;
-    const newResults = [...results];
+  const procesando = carga && carga.estado === 'procesando';
+  const resultados = carga ? carga.resultados : [];
 
-    if (action === 'skip') {
-      newResults.push({
-        name: fileObj.name, status: 'success', type: fileObj.type, date: fileObj.date,
-        cajaCount: result.cajaCount, ventasCount: result.ventasCount,
-        skipped: result.skipped + result.duplicates.caja.length + result.duplicates.ventas.length,
-        duplicateSkipped: result.duplicates.caja.length + result.duplicates.ventas.length,
-      });
-      toast.success(`Duplicados omitidos. Nuevos: Caja ${result.cajaCount}, Ventas ${result.ventasCount}`);
-    } else if (action === 'include') {
-      let extraCaja = 0;
-      let extraVentas = 0;
-      if (result.duplicates.caja.length > 0) {
-        const saved = await mockDB.addBulkCajaMovimientos(result.duplicates.caja.map((d) => d.incoming));
-        extraCaja = saved.length;
-      }
-      if (result.duplicates.ventas.length > 0) {
-        const saved = await mockDB.addBulkVentas(result.duplicates.ventas.map((d) => ({ ...d.incoming, usuario: 'admin@glamours.com' })));
-        extraVentas = saved.length;
-      }
-      newResults.push({
-        name: fileObj.name, status: 'success', type: fileObj.type, date: fileObj.date,
-        cajaCount: result.cajaCount + extraCaja, ventasCount: result.ventasCount + extraVentas,
-        skipped: result.skipped,
-        duplicatesIncluded: result.duplicates.caja.length + result.duplicates.ventas.length,
-      });
-      toast.success(`Todos los registros incluidos. Caja: ${result.cajaCount + extraCaja}, Ventas: ${result.ventasCount + extraVentas}`);
-    }
+  // Cronometro de la carga en curso
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    if (!procesando) return undefined;
+    const t = setInterval(() => setAhora(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [procesando]);
+  const transcurrido = carga?.inicio
+    ? Math.max(1, Math.round(((procesando ? ahora : carga.fin || ahora) - carga.inicio) / 1000))
+    : null;
 
-    mockDB.addAuditLog(user.email, `Carga: ${fileObj.name}`, 'Carga', `Decision duplicados: ${action}`);
-    setResults(newResults);
-    setDuplicateDialog(null);
-
-    const remaining = duplicateDialog.remainingFiles || [];
-    if (remaining.length > 0) {
-      setFiles(remaining);
-    } else {
-      setFiles([]);
-      setProcessing(false);
-    }
-  };
+  // Barra: determinante si hay conteo parcial; pulsante si la fase no reporta conteo o esta al 100% esperando Firebase
+  const prog = carga?.progreso;
+  const pct = prog && prog.total > 0 ? Math.min(100, Math.round((prog.step / prog.total) * 100)) : null;
+  const barraDet = pct !== null && pct < 100;
 
   const activeTabCfg = TABS.find((t) => t.key === activeTab);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
       {/* ============================================ */}
       {/* SECCION 1: HEADER                           */}
       {/* ============================================ */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
           <div style={{
             width: '42px', height: '42px', borderRadius: '12px',
             background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
@@ -174,41 +110,15 @@ export default function CargaExcel() {
             <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Importar archivos Excel de caja y ventas</p>
           </div>
         </div>
-
-        {/* Info de formatos */}
-        <div style={{
-          background: 'rgba(212,175,55,0.05)',
-          border: '1px solid rgba(212,175,55,0.15)',
-          borderRadius: '12px', padding: '1rem 1.25rem',
-          fontSize: '0.8rem', color: '#9ca3af', lineHeight: '1.7',
-        }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div>
-              <strong style={{ color: '#d4af37', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Formatos soportados</strong>
-              <div style={{ marginTop: '0.4rem' }}>
-                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>YYMMDD_Caja.xlsx</code></div>
-                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>YYMMDD_Ventas.xlsx</code></div>
-                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>ventasDD.MM.YY.caja.xlsx</code></div>
-                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>ventasDD.MM.YY.xlsx</code></div>
-                <div>Archivos combinados (caja + ventas)</div>
-              </div>
-            </div>
-            <div>
-              <strong style={{ color: '#d4af37', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Duplicados</strong>
-              <div style={{ marginTop: '0.4rem' }}>
-                <div>Se detectan por <strong style={{ color: '#e2e8f0' }}>fecha + monto + tipo</strong></div>
-                <div>Se le consultara antes de omitir o incluir</div>
-                <div>El sistema detecta tipo, fecha y clasifica cada fila</div>
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* ============================================ */}
-      {/* SECCION 2: SELECTOR DE MODO                 */}
+      {/* PASO 1: SELECTOR DE MODO                    */}
       {/* ============================================ */}
       <section>
+        <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#d4af37', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.6rem' }}>
+          Paso 1 · Elegi el tipo de carga
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -217,14 +127,15 @@ export default function CargaExcel() {
               <div key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
                 background: isActive ? `linear-gradient(135deg, ${tab.color}15 0%, ${tab.color}08 100%)` : 'rgba(255,255,255,0.02)',
                 border: `1px solid ${isActive ? `${tab.color}40` : 'rgba(255,255,255,0.06)'}`,
-                borderRadius: '14px', padding: '1.25rem', cursor: 'pointer',
+                borderRadius: '14px', padding: '1rem 1.1rem', cursor: 'pointer',
                 transition: 'all 0.2s',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                  <Icon size={18} color={isActive ? tab.color : '#6b7280'} />
-                  <span style={{ fontWeight: '700', fontSize: '0.9rem', color: isActive ? tab.color : '#9ca3af' }}>{tab.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                  <Icon size={17} color={isActive ? tab.color : '#6b7280'} />
+                  <span style={{ fontWeight: '700', fontSize: '0.88rem', color: isActive ? tab.color : '#9ca3af' }}>{tab.label}</span>
+                  {isActive && <CheckCircle size={13} color={tab.color} style={{ marginLeft: 'auto' }} />}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', lineHeight: '1.4' }}>{tab.desc}</div>
+                <div style={{ fontSize: '0.72rem', color: '#6b7280', lineHeight: '1.4' }}>{tab.desc}</div>
               </div>
             );
           })}
@@ -232,34 +143,33 @@ export default function CargaExcel() {
       </section>
 
       {/* ============================================ */}
-      {/* SECCION 3: DROPZONE + COLA                  */}
+      {/* PASO 2: DROPZONE + COLA                     */}
       {/* ============================================ */}
       <section>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem',
-        }}>
-          <span style={{ fontSize: '1rem' }}>{activeTabCfg.icon && <activeTabCfg.icon size={16} color={activeTabCfg.color} />}</span>
-          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: activeTabCfg.color }}>
-            Carga de {activeTabCfg.label}
-          </span>
+        <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#d4af37', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.6rem' }}>
+          Paso 2 · Carga de {activeTabCfg.label}
         </div>
 
         <div {...getRootProps()} className={`dropzone ${isDragActive ? 'dragover' : ''}`} style={{
-          border: `2px dashed ${isDragActive ? activeTabCfg.color : 'rgba(255,255,255,0.1)'}`,
-          borderRadius: '14px', padding: '2.5rem 2rem', textAlign: 'center', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: '0.9rem',
+          border: `1.5px dashed ${isDragActive ? activeTabCfg.color : 'rgba(255,255,255,0.12)'}`,
+          borderRadius: '12px', padding: '0.9rem 1.25rem', cursor: 'pointer',
           background: isDragActive ? `${activeTabCfg.color}08` : 'rgba(255,255,255,0.02)',
           transition: 'all 0.2s',
         }}>
           <input {...getInputProps()} />
-          <div style={{ color: isDragActive ? activeTabCfg.color : '#6b7280', marginBottom: '0.5rem' }}>
-            <Upload size={40} />
+          <Upload size={20} color={isDragActive ? activeTabCfg.color : '#d4af37'} style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: '700', fontSize: '0.85rem', color: isDragActive ? activeTabCfg.color : '#e5e7eb' }}>
+              {isDragActive ? 'Suelta los archivos aqui...' : 'Arrastra el Excel aca o hace clic para buscarlo'}
+            </div>
+            <div style={{ fontSize: '0.7rem', color: '#6b7280', marginTop: '2px' }}>
+              Archivos .xlsx / .xls · maximo 10MB · podes seleccionar varios a la vez
+            </div>
           </div>
-          <div style={{ fontWeight: '700', fontSize: '0.9rem', color: isDragActive ? activeTabCfg.color : '#9ca3af', marginBottom: '0.25rem' }}>
-            {isDragActive ? 'Suelta los archivos aqui...' : 'Arrastra archivos Excel o haz clic para seleccionar'}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
-            Archivos .xlsx, maximo 10MB. Multiples archivos permitidos.
-          </div>
+          <span style={{ flexShrink: 0, fontSize: '0.72rem', fontWeight: '700', color: '#d4af37', background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.28)', padding: '0.4rem 0.9rem', borderRadius: '8px' }}>
+            Elegir archivos
+          </span>
         </div>
 
         {/* Cola de archivos */}
@@ -295,34 +205,30 @@ export default function CargaExcel() {
                           {f.date && <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: '#9ca3af' }}>{f.date}</span>}
                           {f.cajaRows > 0 && <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(16,185,129,0.1)', color: '#10b981' }}>{f.cajaRows} caja</span>}
                           {f.ventasRows > 0 && <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(129,140,248,0.1)', color: '#818cf8' }}>{f.ventasRows} ventas</span>}
+                          {f.dupInternos > 0 && <span style={{ fontSize: '0.65rem', fontWeight: '700', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>{f.dupInternos} duplicados internos</span>}
                           {f.skippedRows > 0 && <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: '#6b7280' }}>{f.skippedRows} saltados</span>}
                         </>
                       ) : <span style={{ color: '#ef4444' }}>{f.error}</span>}
                     </div>
-                    {f.skippedDetails && f.skippedDetails.length > 0 && (
-                      <div style={{ marginTop: '4px' }}>
-                        <button className="btn btn-outline btn-sm" onClick={() => setShowSkipped((p) => ({ ...p, ['file_' + i]: !p['file_' + i] }))} style={{ fontSize: '0.65rem', padding: '2px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          {showSkipped['file_' + i] ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                          Ver filas saltadas
+                    {((f.internosDetalle?.caja?.length || 0) + (f.internosDetalle?.ventas?.length || 0) + (f.skippedDetails?.length || 0)) > 0 && (
+                      <div style={{ marginTop: '8px' }}>
+                        <button
+                          className="chk-chip"
+                          onClick={() => setInspectorCola((p) => ({ ...p, [i]: !p[i] }))}
+                          style={{ fontSize: '0.65rem', padding: '0.3rem 0.7rem' }}
+                        >
+                          Inspeccionar antes de cargar
+                          <span className="chk-n" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>
+                            {(f.internosDetalle?.caja?.length || 0) + (f.internosDetalle?.ventas?.length || 0)} dup + {f.skippedDetails?.length || 0} saltadas
+                          </span>
                         </button>
-                        {showSkipped['file_' + i] && (
-                          <div style={{ marginTop: '4px', maxHeight: '150px', overflow: 'auto', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.06)', fontSize: '0.65rem' }}>
-                            <table style={{ width: '100%' }}>
-                              <thead><tr><th>Fila</th><th>Fecha</th><th>Tipo</th><th>Valor</th><th>Monto</th><th>Motivo</th></tr></thead>
-                              <tbody>
-                                {f.skippedDetails.map((s, j) => (
-                                  <tr key={j}>
-                                    <td style={{ color: '#6b7280' }}>{s.fila}</td>
-                                    <td>{s.fecha}</td>
-                                    <td>{s.tipo}</td>
-                                    <td><span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', background: 'rgba(255,255,255,0.05)' }}>{s.valor}</span></td>
-                                    <td>{s.monto}</td>
-                                    <td style={{ color: '#ef4444' }}>{s.motivo}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                        {inspectorCola[i] && (
+                          <ResultadoCarga r={{
+                            internos: { caja: f.internosDetalle?.caja.length || 0, ventas: f.internosDetalle?.ventas.length || 0 },
+                            internosDetalle: f.internosDetalle,
+                            skipped: f.skippedRows,
+                            skippedRows: f.skippedDetails,
+                          }} soloRevision />
                         )}
                       </div>
                     )}
@@ -333,111 +239,68 @@ export default function CargaExcel() {
             </div>
 
             <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
-              <button className="btn btn-primary" onClick={processFiles} disabled={processing}>
-                {processing ? 'Procesando...' : `Procesar ${files.length} archivo(s)`}
+              <button className="btn btn-primary" onClick={processFiles} disabled={procesando}>
+                {procesando ? 'Procesando...' : `Procesar ${files.length} archivo(s)`}
               </button>
             </div>
+          </div>
+        )}
 
-            {processing && progress && (
-              <div style={{
-                marginTop: '1rem', padding: '1rem', borderRadius: '10px',
-                background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: '#93c5fd', fontWeight: '600' }}>{progress.phase}</span>
-                  {progress.total > 0 && <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>{progress.step}/{progress.total} filas</span>}
-                </div>
-                {progress.total > 0 && (
-                  <div style={{ width: '100%', height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', borderRadius: '3px', background: 'linear-gradient(90deg, #3b82f6, #10b981)', width: `${Math.min(100, (progress.step / progress.total) * 100)}%`, transition: 'width 0.3s ease' }} />
-                  </div>
-                )}
+        {/* Progreso EN VIVO: vive en el servicio, sigue aunque cambies de seccion */}
+        {procesando && (
+          <div style={{
+            marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: '12px',
+            background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+              <Loader2 size={16} color="#60a5fa" style={{ animation: 'spin 1s linear infinite' }} />
+              <span style={{ fontSize: '0.85rem', color: '#93c5fd', fontWeight: '700' }}>
+                Carga en proceso ({carga.indiceActual}/{carga.totalArchivos}): {carga.archivoActual}
+              </span>
+              {transcurrido !== null && <span style={{ fontSize: '0.72rem', color: '#6b7280', marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>{transcurrido}s</span>}
+            </div>
+            {carga.progreso && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ fontSize: '0.8rem', color: '#93c5fd', fontWeight: '600' }}>{carga.progreso.phase}</span>
+                {carga.progreso.total > 0 && <span style={{ fontSize: '0.72rem', color: '#6b7280' }}>{carga.progreso.step}/{carga.progreso.total} filas</span>}
               </div>
             )}
+            <div className={`carga-barra ${barraDet ? '' : 'carga-indet'}`}>
+              <div style={barraDet ? { width: `${pct}%` } : undefined} />
+            </div>
+            {carga.resultados.length > 0 && (
+              <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#9ca3af' }}>
+                Ya terminados: {carga.resultados.filter((r) => r.status === 'success').length} archivo(s)
+              </div>
+            )}
+            <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: '#6b7280', fontStyle: 'italic' }}>
+              Podes navegar por otras secciones: el proceso sigue y te avisamos con una notificacion al terminar.
+            </div>
           </div>
         )}
       </section>
 
       {/* ============================================ */}
-      {/* DIALOGO DE DUPLICADOS                       */}
+      {/* RESULTADOS (viven en el servicio de fondo)  */}
       {/* ============================================ */}
-      {duplicateDialog && (
-        <section style={{
-          background: 'rgba(245,158,11,0.05)',
-          border: '1px solid rgba(245,158,11,0.2)',
-          borderRadius: '14px', padding: '1.5rem',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-            <Copy size={18} color="#f59e0b" />
-            <span style={{ fontWeight: '700', fontSize: '0.95rem', color: '#f59e0b' }}>Duplicados Detectados</span>
-            <span style={{ fontSize: '0.8rem', color: '#6b7280', marginLeft: '0.5rem' }}>{duplicateDialog.fileName}</span>
-          </div>
-          <p style={{ color: '#9ca3af', marginBottom: '1rem', fontSize: '0.82rem' }}>Se encontraron registros que ya existen en la base (fecha + monto + tipo coinciden):</p>
-
-          {duplicateDialog.duplicates.caja.length > 0 && (
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ fontSize: '0.82rem', marginBottom: '0.5rem', color: '#facc15' }}>Caja ({duplicateDialog.duplicates.caja.length} duplicados)</h4>
-              <div style={{ maxHeight: '200px', overflow: 'auto', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <table>
-                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th></tr></thead>
-                  <tbody>
-                    {duplicateDialog.duplicates.caja.slice(0, 20).map((d, i) => (
-                      <tr key={i}>
-                        <td>{d.incoming.fecha}</td>
-                        <td><span style={{ fontSize: '0.7rem', fontWeight: '700', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(250,204,21,0.12)', color: '#facc15' }}>{d.incoming.tipo}</span></td>
-                        <td style={{ fontWeight: '700' }}>{formatCurrency(d.incoming.monto)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {duplicateDialog.duplicates.ventas.length > 0 && (
-            <div style={{ marginBottom: '1rem' }}>
-              <h4 style={{ fontSize: '0.82rem', marginBottom: '0.5rem', color: '#818cf8' }}>Ventas ({duplicateDialog.duplicates.ventas.length} duplicados)</h4>
-              <div style={{ maxHeight: '200px', overflow: 'auto', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <table>
-                  <thead><tr><th>Fecha</th><th>Tipo</th><th>Monto</th></tr></thead>
-                  <tbody>
-                    {duplicateDialog.duplicates.ventas.slice(0, 20).map((d, i) => (
-                      <tr key={i}>
-                        <td>{d.incoming.fecha}</td>
-                        <td><span style={{ fontSize: '0.7rem', fontWeight: '700', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(129,140,248,0.12)', color: '#818cf8' }}>{d.incoming.tipo}</span></td>
-                        <td style={{ fontWeight: '700' }}>{formatCurrency(d.incoming.monto)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-            <button className="btn btn-accent" onClick={() => handleDuplicateDecision('skip')}>Omitir Duplicados</button>
-            <button className="btn btn-primary" onClick={() => handleDuplicateDecision('include')}>Incluir Todos</button>
-          </div>
-        </section>
-      )}
-
-      {/* ============================================ */}
-      {/* RESULTADOS                                  */}
-      {/* ============================================ */}
-      {results.length > 0 && (
+      {resultados.length > 0 && (
         <section>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             <div style={{
               width: '36px', height: '36px', borderRadius: '10px',
-              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              background: procesando ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <CheckCircle size={18} color="#fff" />
+              {procesando ? <Loader2 size={18} color="#fff" style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={18} color="#fff" />}
             </div>
             <span style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text, #f3f4f6)' }}>Resultados</span>
+            <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>{procesando ? '(en proceso...)' : `(terminado en ${Math.max(1, Math.round((carga.fin - carga.inicio) / 1000))}s)`}</span>
+            {!procesando && (
+              <button className="btn btn-outline btn-sm" onClick={() => limpiarCarga()} style={{ marginLeft: 'auto', fontSize: '0.72rem' }}>Cerrar</button>
+            )}
           </div>
 
-          {results.map((r, i) => (
+          {resultados.map((r, i) => (
             <div key={i} style={{
               display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '1rem 1.25rem',
               borderRadius: '12px', marginBottom: '0.5rem',
@@ -449,33 +312,10 @@ export default function CargaExcel() {
                 <div style={{ fontWeight: '700', fontSize: '0.9rem', color: '#e2e8f0' }}>{r.name}</div>
                 {r.status === 'success' ? (
                   <>
-                    <div style={{ fontSize: '0.78rem', color: '#9ca3af', marginTop: '4px', display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                      {r.cajaCount > 0 && <span>Caja: <strong style={{ color: '#10b981' }}>{r.cajaCount}</strong></span>}
-                      {r.ventasCount > 0 && <span>Ventas: <strong style={{ color: '#10b981' }}>{r.ventasCount}</strong></span>}
-                      {r.duplicateSkipped > 0 && <span style={{ color: '#f59e0b' }}>Duplicados omitidos: {r.duplicateSkipped}</span>}
-                      {r.duplicatesIncluded > 0 && <span style={{ color: '#3b82f6' }}>Duplicados incluidos: {r.duplicatesIncluded}</span>}
-                      {r.skipped > 0 && <span style={{ color: '#6b7280' }}>No clasificadas: {r.skipped}</span>}
+                    <div style={{ fontSize: '0.72rem', color: '#6b7280', margin: '4px 0 2px' }}>
+                      Hace clic en cada categoria para ver el detalle. En "Ya en la base" podes marcar y eliminar registros viejos.
                     </div>
-                    {r.analyzedTotal && (
-                      <div style={{
-                        marginTop: '0.5rem', padding: '0.5rem 0.75rem', borderRadius: '8px',
-                        background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.12)',
-                        fontSize: '0.72rem',
-                      }}>
-                        <div style={{ color: '#93c5fd', fontWeight: '600', marginBottom: '4px' }}>Verificacion del archivo</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', gap: '2px 12px', color: '#9ca3af' }}>
-                          <span>Filas:</span><span><strong>{r.analyzedTotal}</strong></span><span></span><span></span>
-                          <span>Caja:</span><span><strong style={{ color: '#10b981' }}>{r.cajaCount}</strong></span><span>vs analisis:</span><span>{r.analyzedCaja}</span>
-                          <span>Ventas:</span><span><strong style={{ color: '#10b981' }}>{r.ventasCount}</strong></span><span>vs analisis:</span><span>{r.analyzedVentas}</span>
-                          <span>Saltadas:</span><span><strong style={{ color: '#6b7280' }}>{r.skipped}</strong></span><span>vs analisis:</span><span>{r.analyzedSkipped}</span>
-                        </div>
-                        {r.cajaCount + r.ventasCount + r.skipped === r.analyzedTotal ? (
-                          <div style={{ marginTop: '4px', color: '#10b981', fontSize: '0.7rem' }}>Todos los registros verificados correctamente</div>
-                        ) : (
-                          <div style={{ marginTop: '4px', color: '#f59e0b', fontSize: '0.7rem' }}>Diferencia: {r.analyzedTotal - r.cajaCount - r.ventasCount - r.skipped} filas</div>
-                        )}
-                      </div>
-                    )}
+                    <ResultadoCarga r={r} usuario={user?.email || 'sistema'} />
                   </>
                 ) : <div style={{ fontSize: '0.8rem', color: '#ef4444', marginTop: '4px' }}>{r.message}</div>}
               </div>
@@ -485,7 +325,7 @@ export default function CargaExcel() {
       )}
 
       {/* ============================================ */}
-      {/* REFERENCIA DE CODIFICACIONES                */}
+      {/* AYUDA: FORMATOS + REFERENCIA                */}
       {/* ============================================ */}
       <section>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
@@ -496,7 +336,37 @@ export default function CargaExcel() {
           }}>
             <span style={{ fontSize: '1rem' }}>📖</span>
           </div>
-          <span style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text, #f3f4f6)' }}>Referencia de Codificaciones</span>
+          <span style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text, #f3f4f6)' }}>Referencia y Ayuda</span>
+        </div>
+
+        <div style={{
+          background: 'rgba(212,175,55,0.05)',
+          border: '1px solid rgba(212,175,55,0.15)',
+          borderRadius: '12px', padding: '1rem 1.25rem',
+          fontSize: '0.8rem', color: '#9ca3af', lineHeight: '1.7',
+          marginBottom: '1rem',
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div>
+              <strong style={{ color: '#d4af37', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Formatos soportados</strong>
+              <div style={{ marginTop: '0.4rem' }}>
+                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>YYMMDD_Caja.xlsx</code></div>
+                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>YYMMDD_Ventas.xlsx</code></div>
+                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>ventasDD.MM.YY.caja.xlsx</code></div>
+                <div><code style={{ background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '3px', fontSize: '0.72rem' }}>ventasDD.MM.YY.xlsx</code></div>
+                <div>Archivos combinados (caja + ventas)</div>
+              </div>
+            </div>
+            <div>
+              <strong style={{ color: '#d4af37', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Duplicados</strong>
+              <div style={{ marginTop: '0.4rem' }}>
+                <div>Duplicados <strong style={{ color: '#e2e8f0' }}>dentro del archivo</strong> (dias repetidos): se omiten siempre</div>
+                <div>Contra la base solo cuenta si coinciden <strong style={{ color: '#e2e8f0' }}>TODOS los campos</strong>; si algo difiere, se carga</div>
+                <div>El proceso sigue aunque cambies de seccion y avisa al terminar</div>
+                <div>El sistema detecta tipo, fecha y clasifica cada fila</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>

@@ -3,7 +3,9 @@ import { format, subMonths, startOfMonth, endOfMonth, subDays, isWithinInterval,
 import { TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Wallet, ShoppingBag, ChevronDown, ChevronRight } from 'lucide-react';
 import mockDB from '../services/firestoreDB';
 import { formatCurrency } from '../utils/formatCurrency';
+import { classificarVenta, VENTA_TYPES as TYPES, VENTA_TYPE_CFG as TIPO_CFG } from '../utils/ventaTypes';
 import toast from 'react-hot-toast';
+import Calendario from '../components/Calendario';
 
 function getMonthRange(monthsAgo = 0) {
   const d = subMonths(new Date(), monthsAgo);
@@ -14,26 +16,6 @@ function isInRange(fechaStr, start, end) {
   if (!fechaStr) return false;
   try { return isWithinInterval(parseISO(fechaStr), { start, end }); } catch { return false; }
 }
-
-function classificarVenta(v) {
-  const banco = (v.banco || '').toLowerCase();
-  const tipo = (v.tipo || '').toLowerCase();
-  if (tipo.includes('transferencia') || banco.startsWith('qr') || banco.includes('mercadopago') || banco.includes('mpago')) return 'transferencia';
-  if (banco.includes('debito') || banco.includes('electron') || banco.includes('maestro') || banco.includes('cad')) return 'debito';
-  if ((v.medio_pago || '').toLowerCase() === 'tarjeta' || (v.medio_pago || '').toLowerCase() === 'electrónico') return 'tarjeta_credito';
-  if (v.categoria === 'Negro') return 'negro';
-  return 'blanco';
-}
-
-const TIPO_CFG = {
-  blanco:            { label: 'Efectivo Blanco',   color: '#e2e8f0', accent: '#cbd5e1', icon: '💵', desc: 'Declarado',       gradient: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)' },
-  negro:             { label: 'Efectivo Negro',    color: '#c4b5fd', accent: '#a78bfa', icon: '🖤', desc: 'No declarado',    gradient: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)' },
-  tarjeta_credito:   { label: 'Tarjeta Crédito',  color: '#fbbf24', accent: '#f59e0b', icon: '💳', desc: 'Visa / Mastercard', gradient: 'linear-gradient(135deg, #422006 0%, #78350f 100%)' },
-  debito:            { label: 'Débito',           color: '#60a5fa', accent: '#3b82f6', icon: '🏦', desc: 'Cabal / Electron / Maestro', gradient: 'linear-gradient(135deg, #172554 0%, #1e3a5f 100%)' },
-  transferencia:     { label: 'Transferencia QR', color: '#34d399', accent: '#10b981', icon: '📱', desc: 'QR / MercadoPago', gradient: 'linear-gradient(135deg, #022c22 0%, #064e3b 100%)' },
-};
-
-const TYPES = ['blanco', 'negro', 'tarjeta_credito', 'debito', 'transferencia'];
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
@@ -94,38 +76,27 @@ export default function Dashboard() {
   );
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      {/* Burbuja flotante de días hábiles (arriba a la derecha) */}
+      <Calendario />
 
       {/* ============================================ */}
-      {/* SECCION 1: VENTAS                           */}
+      {/* FILA SUPERIOR: HEROES VENTAS | CAJA         */}
       {/* ============================================ */}
-      <section>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
-          <div style={{
-            width: '42px', height: '42px', borderRadius: '12px',
-            background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <ShoppingBag size={20} color="#fff" />
-          </div>
-          <div>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Resumen de Ventas</h2>
-            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Consolidado del mes actual ({curMonth.label})</p>
-          </div>
-        </div>
-
-        {/* Total General */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1rem' }}>
+        {/* Hero: Total Ventas del mes */}
         <div style={{
           background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
           border: '1px solid rgba(212,175,55,0.2)',
-          borderRadius: '16px', padding: '1.5rem 2rem', marginBottom: '1.25rem',
+          borderRadius: '16px', padding: '1.75rem 2rem',
           position: 'relative', overflow: 'hidden',
         }}>
           <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.03, fontWeight: '900' }}>$</div>
           <div style={{ fontSize: '0.75rem', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>
             Total Ventas {curMonth.label}
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '2.5rem', fontWeight: '900', color: '#d4af37', letterSpacing: '-0.02em' }}>
               {formatCurrency(totalCur)}
             </span>
@@ -153,8 +124,46 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* Hero: Saldo al abrir caja */}
+        <div style={{
+          background: 'linear-gradient(135deg, #854d0e 0%, #a16207 40%, #ca8a04 100%)',
+          borderRadius: '16px', padding: '1.75rem 2rem',
+          border: '1px solid rgba(250,204,21,0.3)',
+          position: 'relative', overflow: 'hidden',
+        }}>
+          <div style={{ position: 'absolute', top: '-20px', right: '-20px', fontSize: '6rem', opacity: 0.04, fontWeight: '900' }}>$</div>
+          <div style={{ fontSize: '0.75rem', color: '#fde68a', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
+            Saldo al Abrir Caja
+          </div>
+          <div style={{ fontSize: '2.5rem', fontWeight: '900', color: '#fff', lineHeight: '1.1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+            {formatCurrency(saldoFisico)}
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
+            Efectivo físico disponible hoy
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================ */}
+      {/* SECCION 1: DETALLE DE VENTAS                */}
+      {/* ============================================ */}
+      <section>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+          <div style={{
+            width: '42px', height: '42px', borderRadius: '12px',
+            background: 'linear-gradient(135deg, #d4af37 0%, #b8960c 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <ShoppingBag size={20} color="#fff" />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Ventas por Medio de Pago</h2>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Detalle del mes actual ({curMonth.label})</p>
+          </div>
+        </div>
+
         {/* Cards por tipo */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem' }}>
           {TYPES.map((tipo) => {
             const cfg = TIPO_CFG[tipo];
             const valCur = cur.totales[tipo];
@@ -223,10 +232,10 @@ export default function Dashboard() {
       </section>
 
       {/* ============================================ */}
-      {/* SECCION 2: CAJA - SALDO FISICO              */}
+      {/* SECCION 2: CAJA - DESGLOSE                  */}
       {/* ============================================ */}
       <section>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
           <div style={{
             width: '42px', height: '42px', borderRadius: '12px',
             background: 'linear-gradient(135deg, #facc15 0%, #f59e0b 100%)',
@@ -236,30 +245,12 @@ export default function Dashboard() {
           </div>
           <div>
             <h2 style={{ fontSize: '1.35rem', fontWeight: '800', margin: 0, color: 'var(--text, #f3f4f6)' }}>Caja</h2>
-            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Efectivo físico del último día cerrado ({format(subDays(new Date(), 1), 'dd/MM/yyyy')})</p>
+            <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>Desglose del día ({format(new Date(), 'dd/MM/yyyy')})</p>
           </div>
         </div>
 
-        {/* Card principal: Saldo al abrir */}
-        <div style={{
-          background: 'linear-gradient(135deg, #854d0e 0%, #a16207 40%, #ca8a04 100%)',
-          borderRadius: '16px', padding: '2rem 2.5rem',
-          border: '1px solid rgba(250,204,21,0.3)',
-          position: 'relative', overflow: 'hidden',
-        }}>
-          <div style={{ position: 'absolute', top: '-30px', right: '-30px', fontSize: '8rem', opacity: 0.04, fontWeight: '900' }}>$</div>
-          <div style={{ fontSize: '0.8rem', color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: '700', marginBottom: '0.5rem' }}>
-            Saldo al Abrir Caja
-          </div>
-          <div style={{ fontSize: '3.5rem', fontWeight: '900', color: '#fff', lineHeight: '1', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
-            {formatCurrency(saldoFisico)}
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}>
-            Efectivo disponible en caja del día de hoy
-          </div>        </div>
-
         {/* Desplegable: Desglose */}
-        <div style={{ marginTop: '0.75rem' }}>
+        <div>
           <button
             onClick={() => setShowCajaDetail(!showCajaDetail)}
             style={{
