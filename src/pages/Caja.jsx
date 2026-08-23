@@ -89,8 +89,8 @@ export default function Caja() {
     const items = groupedByDate[date] || [];
     const ingresos = items.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
     const egresos = items.filter((m) => m.codigo === 501).reduce((s, m) => s + m.monto, 0);
-    // Mismo criterio que el motor de saldos: 500 no afecta, 502 suma, 501 y 503 restan
-    const multOf = (m) => (m.codigo === 500 ? 0 : m.codigo === 501 || m.codigo === 503 ? -1 : 1);
+    // Mismo criterio que el motor de saldos v7: 500 y 503 no afectan, 501 resta, 502 suma
+    const multOf = (m) => (m.codigo === 500 || m.codigo === 503 ? 0 : m.codigo === 501 ? -1 : 1);
     const blanco = items.filter((m) => m.categoria === 'Blanco').reduce((s, m) => s + m.monto * multOf(m), 0);
     const negro = items.filter((m) => m.categoria === 'Negro').reduce((s, m) => s + m.monto * multOf(m), 0);
     return { count: items.length, ingresos, egresos, blanco, negro };

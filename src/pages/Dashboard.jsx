@@ -282,7 +282,8 @@ export default function Dashboard() {
             const vNegroHoy = ventasHoy.filter((v) => classificarVenta(v) === 'negro').reduce((s, v) => s + v.monto, 0);
 
             // Saldo de ayer = saldo actual cacheado menos el neto de los movimientos de hoy
-            const netoHoy = ingHoy + vBlancoHoy + vNegroHoy - egrHoy - retHoy;
+            // Nota v7: retiros (503) son informativos, no restan (ya estan en el 501)
+            const netoHoy = ingHoy + vBlancoHoy + vNegroHoy - egrHoy;
             const saldoAyerTotal = saldoFisico - netoHoy;
             const totalHoy = saldoAyerTotal + netoHoy;
 
@@ -292,7 +293,7 @@ export default function Dashboard() {
               { code: 'VB', label: 'Ventas Blanco', value: vBlancoHoy, color: '#e2e8f0', sign: 1 },
               { code: 'VN', label: 'Ventas Negro', value: vNegroHoy, color: '#a78bfa', sign: 1 },
               { code: 501, label: 'Egresos', value: egrHoy, color: '#ef4444', sign: -1 },
-              { code: 503, label: 'Retiros', value: retHoy, color: '#f97316', sign: -1 },
+              { code: 503, label: 'Retiros (informativo)', value: retHoy, color: '#f97316', sign: 0 },
             ].filter((f) => f.value > 0);
 
             const movsByCode = {};
@@ -346,8 +347,8 @@ export default function Dashboard() {
                         <span style={{ fontSize: '0.8rem', color: '#d1d5db', fontWeight: '500' }}>
                           {f.label}
                         </span>
-                        <span style={{ fontSize: '0.85rem', fontWeight: '800', color: f.color, textAlign: 'right' }}>
-                          {f.sign > 0 ? '+' : '-'}{formatCurrency(f.value)}
+                        <span style={{ fontSize: '0.85rem', fontWeight: '800', color: f.sign === 0 ? '#6b7280' : f.color, textAlign: 'right', fontStyle: f.sign === 0 ? 'italic' : 'normal' }}>
+                          {f.sign > 0 ? '+' : f.sign < 0 ? '-' : ''}{formatCurrency(f.value)}
                         </span>
                       </div>
                       {/* Items individuales */}

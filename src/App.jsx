@@ -8,6 +8,7 @@ import Caja from './pages/Caja';
 import Ventas from './pages/Ventas';
 import CargaExcel from './pages/CargaExcel';
 import Reportes from './pages/Reportes';
+import Luxcar from './pages/Luxcar';
 import Configuracion from './pages/Configuracion';
 import CierresCaja from './pages/CierresCaja';
 import Auditoria from './pages/Auditoria';
@@ -31,6 +32,7 @@ function AppRoutes() {
         <Route path="ventas" element={<Ventas />} />
         <Route path="carga" element={<CargaExcel />} />
         <Route path="reportes" element={<Reportes />} />
+        <Route path="luxcar" element={<Luxcar />} />
         <Route path="configuracion" element={<Configuracion />} />
         <Route path="cierres" element={<CierresCaja />} />
         <Route path="auditoria" element={<Auditoria />} />

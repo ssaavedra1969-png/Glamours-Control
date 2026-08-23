@@ -21,17 +21,20 @@ function conTimeout(promesa, ms = 15000) {
 const ESTADO_DOC = 'caja';
 
 // ============================================================
-//  FORMULA UNICA DE SALDOS (usar SIEMPRE esta funcion)
+//  FORMULA UNICA DE SALDOS v7 (usar SIEMPRE esta funcion)
 //  500 "En caja"       -> ANCLA: fija el saldo = monto (conteo fisico real,
 //                         "saldo del dia anterior"). No se suma ni se resta.
 //  501 "Egreso"        -> resta (sale dinero de la caja)
 //  502 "Ingreso"       -> suma (entra dinero a la caja)
-//  503 "Retiro"        -> resta (el efectivo sale fisicamente de la caja)
-//  Ejemplo verificado con datos reales (TEST_CAJA.xlsx):
-//    18/08: 500=45000, 502=33300, 501=15000, 503=15000 -> cierre 48300
-//    19/08: 500=48300 (coincide), 502=12000 -> saldo 60300
+//  503 "Retiro"        -> INFORMATIVO: no afecta el saldo. La salida de
+//                         dinero ya esta reflejada en el 501 (Egreso). El 503
+//                         solo documenta que hubo un retiro fisico.
+//  Formula: Saldo = 500 + 502 - 501  (el 503 NO participa)
+//  Ejemplo verificado con datos del usuario (dia 20/08):
+//    500=10592, 502=482300, 501=480600, 503=480600
+//    Saldo = 10592 + 482300 - 480600 = 12292 (503 NO resta)
 // ============================================================
-export const SALDO_VERSION = 6;
+export const SALDO_VERSION = 7;
 
 async function getAllRaw(collectionName) {
   const snap = await getDocs(col(collectionName));
@@ -44,7 +47,8 @@ function aplicarMovimiento(saldos, cat, codigo, monto) {
   if (codigo === 500) {
     nuevo = monto;
   } else {
-    const mult = codigo === 501 || codigo === 503 ? -1 : 1;
+    // 501 resta, 502 suma, 503 es informativo (mult 0)
+    const mult = codigo === 501 ? -1 : codigo === 503 ? 0 : 1;
     nuevo = anterior + monto * mult;
   }
   saldos[cat] = nuevo;
@@ -615,6 +619,27 @@ class FirestoreDB {
       if (count % 450 !== 0) await batch.commit();
     }
     return total;
+  }
+
+  // ===== LUXCAR (cumpleaños / día del niño / navidad) =====
+  // Un doc por tipo con el array completo de personas: 1 lectura por tipo,
+  // la carga sobrescribe (setDoc) y nunca borra -> no requiere permiso admin.
+  async getLuxcarAll() {
+    const snap = await getDocs(col('luxcar_personas'));
+    const out = { cumple: [], nino: [], navidad: [] };
+    snap.docs.forEach((d) => {
+      if (out[d.id]) out[d.id] = d.data().personas || [];
+    });
+    return out;
+  }
+
+  async guardarLuxcarPersonas(tipo, personas) {
+    await setDoc(docRef('luxcar_personas', tipo), {
+      personas,
+      cantidad: personas.length,
+      actualizado: new Date().toISOString(),
+    });
+    return personas.length;
   }
 
   async getCollectionCounts() {
