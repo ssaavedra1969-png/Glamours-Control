@@ -296,7 +296,7 @@ export default function Configuracion() {
             })}
           </div>
           <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '1rem', marginBottom: 0 }}>
-            Limites del plan Spark por dia (se reinician a medianoche). Cuenta las operaciones que hace la app desde este navegador — se guarda local y NO consume cuota. La consola de Google puede mostrar un valor levemente mayor (otros dispositivos o la propia consola).
+            Limites del plan Spark por dia (se reinician a medianoche). Cuenta SOLO las operaciones que hace la app desde este navegador (se guarda local y NO consume cuota). No coincide exacto con la consola de Google porque esa tambien suma: otros dispositivos, la propia consola de Firebase (hojear colecciones consume lecturas reales) y corta el dia a medianoche del Pacifico.
           </p>
         </div>
       </section>
