@@ -1,8 +1,9 @@
-import { format, parseISO, subDays } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export function defaultDateFrom() {
-  return format(subDays(new Date(), 29), 'yyyy-MM-dd');
+  // Por defecto TODAS las secciones arrancan mostrando el MES EN CURSO
+  return format(startOfMonth(new Date()), 'yyyy-MM-dd');
 }
 
 export function defaultDateTo() {

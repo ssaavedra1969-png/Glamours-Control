@@ -96,6 +96,7 @@ export default function Reportes() {
   const [dateTo, setDateTo] = useState(today());
   const [ventas, setVentas] = useState([]);
   const [allVentas, setAllVentas] = useState([]);
+  const [mesesHist, setMesesHist] = useState(12);
 
   useEffect(() => { loadData(); }, [dateFrom, dateTo]);
 
@@ -143,13 +144,13 @@ export default function Reportes() {
     daysInRange.push({ date: dateStr, label: format(d, 'dd/MM'), total: dayVentas.reduce((s, v) => s + v.monto, 0), ...totalesPorTipo(dayVentas) });
   }
 
-  // Ranking de medios de pago electronicos (tarjeta + debito + QR) por banco
+  // Ranking de medios de pago electronicos (tarjeta + debito + QR) por banco - TODO EL HISTORICO
   const mediosMap = {};
-  ventas.filter((v) => ['tarjeta_credito', 'debito', 'transferencia'].includes(classificarVenta(v))).forEach((v) => {
+  allVentas.filter((v) => ['tarjeta_credito', 'debito', 'transferencia'].includes(classificarVenta(v))).forEach((v) => {
     const key = v.banco || 'Otro';
     mediosMap[key] = (mediosMap[key] || 0) + v.monto;
   });
-  const mediosRanking = Object.entries(mediosMap).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const mediosRanking = Object.entries(mediosMap).sort((a, b) => b[1] - a[1]);
 
   const monthlyMap = {};
   allVentas.forEach((v) => {
@@ -160,7 +161,7 @@ export default function Reportes() {
     monthlyMap[ym][classificarVenta(v)] += v.monto;
   });
   const monthlySorted = Object.entries(monthlyMap).sort((a, b) => a[0].localeCompare(b[0]));
-  const monthly12 = monthlySorted.slice(-12);
+  const monthlySel = mesesHist > 0 ? monthlySorted.slice(-mesesHist) : monthlySorted;
 
   const yearlyMap = {};
   allVentas.forEach((v) => {
@@ -348,6 +349,7 @@ export default function Reportes() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', position: 'relative' }}>
               <Award size={16} color="#d4af37" />
               <span style={{ fontWeight: '700', fontSize: '0.9rem', color: '#f3f4f6' }}>Ranking Medios de Pago Electronicos</span>
+              <span style={{ fontSize: '0.68rem', color: '#6b7280', fontStyle: 'italic' }}>(todo el historico)</span>
             </div>
             {mediosRanking.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', position: 'relative' }}>
@@ -397,14 +399,27 @@ export default function Reportes() {
               <Calendar size={18} color="#6ee7b7" />
             </div>
             <span style={{ fontSize: '1rem', fontWeight: '800', color: 'var(--text, #f3f4f6)' }}>Tendencia Mensual</span>
+            <div style={{ display: 'flex', gap: '0.35rem', marginLeft: 'auto' }}>
+              {[6, 12, 24, 36, 0].map((n) => (
+                <button key={n} className="btn btn-outline btn-sm" onClick={() => setMesesHist(n)} style={{
+                  fontSize: '0.68rem', padding: '0.2rem 0.55rem', whiteSpace: 'nowrap',
+                  borderColor: mesesHist === n ? '#d4af37' : 'rgba(255,255,255,0.15)',
+                  color: mesesHist === n ? '#d4af37' : '#9ca3af',
+                  fontWeight: mesesHist === n ? 800 : 500,
+                  background: mesesHist === n ? 'rgba(212,175,55,0.1)' : 'transparent',
+                }}>
+                  {n === 0 ? 'Todos' : `Ultimos ${n}`}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
-            <ChartCard title="Ventas por Mes (Ultimos 12 meses)">
-              {monthly12.length > 0 ? (
+            <ChartCard title={`Ventas por Mes (${mesesHist === 0 ? 'Historico Completo' : `Ultimos ${mesesHist} meses`})`}>
+              {monthlySel.length > 0 ? (
                 <Bar data={{
-                  labels: monthly12.map(([ym]) => { const [y, m] = ym.split('-'); return `${MONTHS_SHORT[parseInt(m) - 1]} ${y.slice(2)}`; }),
-                  datasets: barDatasets(monthly12),
+                  labels: monthlySel.map(([ym]) => { const [y, m] = ym.split('-'); return `${MONTHS_SHORT[parseInt(m) - 1]} ${y.slice(2)}`; }),
+                  datasets: barDatasets(monthlySel),
                 }} options={{
                   responsive: true, maintainAspectRatio: false,
                   interaction: { mode: 'index', intersect: false },
@@ -420,11 +435,11 @@ export default function Reportes() {
             </ChartCard>
 
             <ChartCard title="Evolucion Mensual">
-              {monthly12.length > 0 ? (
+              {monthlySel.length > 0 ? (
                 <Line data={{
-                  labels: monthly12.map(([ym]) => { const [y, m] = ym.split('-'); return `${MONTHS_SHORT[parseInt(m) - 1]} ${y.slice(2)}`; }),
+                  labels: monthlySel.map(([ym]) => { const [y, m] = ym.split('-'); return `${MONTHS_SHORT[parseInt(m) - 1]} ${y.slice(2)}`; }),
                   datasets: [
-                    { label: 'Total', data: monthly12.map(([, d]) => d.total), borderColor: '#d4af37', backgroundColor: fillDown('212,175,55', 0.3), fill: true, tension: 0.45, pointRadius: 4, pointBackgroundColor: '#12121f', pointBorderColor: '#d4af37', pointBorderWidth: 2, pointHoverRadius: 6, borderWidth: 2.5 },
+                    { label: 'Total', data: monthlySel.map(([, d]) => d.total), borderColor: '#d4af37', backgroundColor: fillDown('212,175,55', 0.3), fill: true, tension: 0.45, pointRadius: 4, pointBackgroundColor: '#12121f', pointBorderColor: '#d4af37', pointBorderWidth: 2, pointHoverRadius: 6, borderWidth: 2.5 },
                   ],
                 }} options={{
                   responsive: true, maintainAspectRatio: false,
@@ -438,9 +453,9 @@ export default function Reportes() {
             </ChartCard>
           </div>
 
-          {monthly12.length > 0 && (
+          {monthlySel.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '0.75rem', marginTop: '0.75rem' }}>
-              {monthly12.map(([ym, d]) => {
+              {monthlySel.map(([ym, d]) => {
                 const [y, m] = ym.split('-');
                 return (
                   <div key={ym} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.75rem 1rem', textAlign: 'center' }}>

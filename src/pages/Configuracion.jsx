@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Users, UserPlus, Database, Upload, Download, Trash2, Info } from 'lucide-react';
+import { Settings, Users, UserPlus, Database, Upload, Download, Trash2, Info, Activity } from 'lucide-react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut as fbSignOut, connectAuthEmulator } from 'firebase/auth';
 import { firebaseConfig } from '../config/firebase';
 import mockDB, { SALDO_VERSION } from '../services/firestoreDB';
+import { getUsageHoy, SPARK_LIMITS } from '../utils/firebaseUsage';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export default function Configuracion() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
   const [counts, setCounts] = useState(null);
@@ -18,6 +19,15 @@ export default function Configuracion() {
 
   useEffect(() => { loadData(); }, []);
 
+  // Salud de Firebase: se refresca cada 15s y al volver el foco a la pestana
+  const [uso, setUso] = useState(getUsageHoy());
+  useEffect(() => {
+    const refrescar = () => setUso(getUsageHoy());
+    const id = setInterval(refrescar, 15000);
+    window.addEventListener('focus', refrescar);
+    return () => { clearInterval(id); window.removeEventListener('focus', refrescar); };
+  }, []);
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -26,6 +36,19 @@ export default function Configuracion() {
       setCounts(c);
     } catch {}
     finally { setLoading(false); }
+  };
+
+  const cambiarRol = async (u, nuevoRol) => {
+    if (nuevoRol === u.rol) return;
+    if (!window.confirm(`Cambiar rol de ${u.email} a "${nuevoRol}"?\n\nEl cambio toma efecto cuando el usuario vuelva a iniciar sesion.`)) return;
+    try {
+      await mockDB.updateUserRol(u.uid, nuevoRol);
+      mockDB.addAuditLog(user?.email || '?', 'Cambio de rol', 'Configuracion', `${u.email}: ${u.rol} -> ${nuevoRol}`);
+      setUsers((prev) => prev.map((x) => (x.uid === u.uid ? { ...x, rol: nuevoRol } : x)));
+      toast.success(`Rol de ${u.email} actualizado a ${nuevoRol}`);
+    } catch (e) {
+      toast.error('No se pudo cambiar el rol: ' + (e?.message || e));
+    }
   };
 
   const crearUsuario = async () => {
@@ -160,7 +183,20 @@ export default function Configuracion() {
                   <tr key={u.uid}>
                     <td>{u.email}</td>
                     <td>{u.nombre}</td>
-                    <td><span className={`badge ${u.rol === 'admin' ? 'badge-primary' : 'badge-neutral'}`}>{u.rol}</span></td>
+                    <td>
+                      {isAdmin && user?.uid !== u.uid ? (
+                        <select value={u.rol} onChange={(e) => cambiarRol(u, e.target.value)} style={{
+                          background: '#111827', color: u.rol === 'admin' ? '#d4af37' : '#9ca3af',
+                          border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', fontSize: '0.75rem',
+                          padding: '0.25rem 0.5rem', fontWeight: '700', cursor: 'pointer',
+                        }}>
+                          <option value="admin">admin</option>
+                          <option value="operador">operador</option>
+                        </select>
+                      ) : (
+                        <span className={`badge ${u.rol === 'admin' ? 'badge-primary' : 'badge-neutral'}`}>{u.rol}</span>
+                      )}
+                    </td>
                     <td>{u.creado?.split('T')[0] || '-'}</td>
                   </tr>
                 ))}
@@ -220,7 +256,53 @@ export default function Configuracion() {
       </section>
 
       {/* ============================================ */}
-      {/* SECCION 4: INFORMACION DEL SISTEMA         */}
+      {/* SECCION 4: SALUD DE FIREBASE               */}
+      {/* ============================================ */}
+      <section>
+        <div style={panelStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Activity size={18} color="#d4af37" />
+              <div style={{ fontWeight: '800', fontSize: '0.95rem' }}>Salud de Firebase</div>
+              <div style={{ fontSize: '0.72rem', color: '#6b7280' }}>(cuota de hoy)</div>
+            </div>
+            {(() => {
+              const peor = Math.max(...['lectura', 'escritura', 'eliminacion'].map((t) => Math.min(100, (uso[t] / SPARK_LIMITS[t]) * 100)));
+              const nivel = peor >= 85 ? ['CRITICO', '#ef4444'] : peor >= 60 ? ['ATENCION', '#f59e0b'] : ['SALUDABLE', '#10b981'];
+              return (
+                <span style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.06em', padding: '0.25rem 0.7rem', borderRadius: '999px', color: nivel[1], background: nivel[1] + '22', border: `1px solid ${nivel[1]}55` }}>
+                  {nivel[0]} · peor cuota al {Math.round(peor)}%
+                </span>
+              );
+            })()}
+          </div>
+          <div style={{ display: 'grid', gap: '0.75rem' }}>
+            {[['lectura', 'Lecturas'], ['escritura', 'Escrituras'], ['eliminacion', 'Eliminaciones']].map(([tipo, label]) => {
+              const usado = uso[tipo];
+              const limite = SPARK_LIMITS[tipo];
+              const pct = Math.min(100, (usado / limite) * 100);
+              const color = pct >= 85 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#10b981';
+              return (
+                <div key={tipo}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginBottom: '0.3rem' }}>
+                    <span style={{ color: '#d1d5db', fontWeight: '600' }}>{label}</span>
+                    <span style={{ color: '#9ca3af' }}>{usado.toLocaleString()} / {limite.toLocaleString()} ({pct.toFixed(1)}%)</span>
+                  </div>
+                  <div style={{ height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '4px', transition: 'width 0.4s ease', boxShadow: `0 0 8px ${color}66` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: '1rem', marginBottom: 0 }}>
+            Limites del plan Spark por dia (se reinician a medianoche). Cuenta las operaciones que hace la app desde este navegador — se guarda local y NO consume cuota. La consola de Google puede mostrar un valor levemente mayor (otros dispositivos o la propia consola).
+          </p>
+        </div>
+      </section>
+
+      {/* ============================================ */}
+      {/* SECCION 5: INFORMACION DEL SISTEMA         */}
       {/* ============================================ */}
       <section>
         <div style={panelStyle}>
@@ -245,7 +327,7 @@ export default function Configuracion() {
       </section>
 
       {/* ============================================ */}
-      {/* SECCION 5: ZONA DE PELIGRO                 */}
+      {/* SECCION 6: ZONA DE PELIGRO                 */}
       {/* ============================================ */}
       <section>
         <div style={{

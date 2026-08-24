@@ -1,10 +1,11 @@
-import { db } from '../config/firebase';
+﻿import { db } from '../config/firebase';
 import {
   collection, getDocs, addDoc, updateDoc, deleteDoc, doc,
   query, where, writeBatch, getDoc, setDoc, limit as firestoreLimit, orderBy,
   getCountFromServer,
 } from 'firebase/firestore';
 import { processData, separarDuplicadosInternos } from '../utils/excelParser';
+import { trackOp } from '../utils/firebaseUsage';
 
 function col(name) { return collection(db, name); }
 function docRef(name, id) { return doc(db, name, id); }
@@ -19,6 +20,29 @@ function conTimeout(promesa, ms = 15000) {
 }
 
 const ESTADO_DOC = 'caja';
+
+// ============================================================
+//  INSTRUMENTACION DE CUOTA (plan Spark): cada operacion que sale
+//  por este servicio se cuenta en localStorage (utils/firebaseUsage).
+//  No altera el comportamiento: solo contabiliza.
+// ============================================================
+const _getDocs = async (q) => { const s = await getDocs(q); trackOp('lectura', s.size); return s; };
+const _getDoc = async (r) => { const s = await getDoc(r); if (s.exists()) trackOp('lectura', 1); return s; };
+const _addDoc = async (r, d) => { trackOp('escritura', 1); return addDoc(r, d); };
+const _setDoc = (r, d, o) => { trackOp('escritura', 1); return setDoc(r, d, o); };
+const _updateDoc = (r, d) => { trackOp('escritura', 1); return updateDoc(r, d); };
+const _deleteDoc = (r) => { trackOp('eliminacion', 1); return deleteDoc(r); };
+const _getCountFromServer = async (q) => { const s = await getCountFromServer(q); trackOp('lectura', 1); return s; };
+const _writeBatch = () => {
+  const b = writeBatch(db);
+  let esc = 0, eli = 0;
+  const oSet = b.set.bind(b), oUpd = b.update.bind(b), oDel = b.delete.bind(b), oCom = b.commit.bind(b);
+  b.set = (...a) => { esc++; return oSet(...a); };
+  b.update = (...a) => { esc++; return oUpd(...a); };
+  b.delete = (...a) => { eli++; return oDel(...a); };
+  b.commit = async () => { const r = await oCom(); if (esc) trackOp('escritura', esc); if (eli) trackOp('eliminacion', eli); return r; };
+  return b;
+};
 
 // ============================================================
 //  FORMULA UNICA DE SALDOS v7 (usar SIEMPRE esta funcion)
@@ -37,7 +61,7 @@ const ESTADO_DOC = 'caja';
 export const SALDO_VERSION = 7;
 
 async function getAllRaw(collectionName) {
-  const snap = await getDocs(col(collectionName));
+  const snap = await _getDocs(col(collectionName));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 }
 
@@ -86,7 +110,7 @@ class FirestoreDB {
       if (fechaInicio) constraints.push(where('fecha', '>=', fechaInicio));
       if (fechaFin) constraints.push(where('fecha', '<=', fechaFin));
       q = query(q, ...constraints);
-      const snap = await getDocs(q);
+      const snap = await _getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
     }
     return getAllRaw('caja');
@@ -100,7 +124,7 @@ class FirestoreDB {
   // Devuelve los saldos cacheados (1 lectura) o los calcula desde la coleccion completa (1ra vez).
   async getEstadoSaldos() {
     try {
-      const snap = await getDoc(docRef('estado', ESTADO_DOC));
+      const snap = await _getDoc(docRef('estado', ESTADO_DOC));
       if (snap.exists()) {
         const d = snap.data();
         if (typeof d.saldo_blanco === 'number') return { Blanco: d.saldo_blanco, Negro: d.saldo_negro || 0, _version: d._version || 0 };
@@ -122,7 +146,7 @@ class FirestoreDB {
         actualizado: new Date().toISOString(),
       };
       if (saldos._version != null) data._version = saldos._version;
-      await setDoc(docRef('estado', ESTADO_DOC), data, { merge: true });
+      await _setDoc(docRef('estado', ESTADO_DOC), data, { merge: true });
     } catch (e) {
       console.warn('setEstadoSaldos fallback:', e.message);
     }
@@ -141,7 +165,7 @@ class FirestoreDB {
       saldo_anterior: lastSaldo, saldo_nuevo: nuevoSaldo,
       origen: mov.origen || 'manual', creado: new Date().toISOString(),
     };
-    const ref = await addDoc(col('caja'), docData);
+    const ref = await _addDoc(col('caja'), docData);
     // Recalculo de la categoria: si el movimiento es de una fecha atrasada,
     // la cadena posterior queda consistente igualmente.
     await this._recalculateFromScratch(categoria);
@@ -172,7 +196,7 @@ class FirestoreDB {
     const BATCH_SIZE = 500;
     for (let i = 0; i < newDocs.length; i += BATCH_SIZE) {
       const chunk = newDocs.slice(i, i + BATCH_SIZE);
-      const batch = writeBatch(db);
+      const batch = _writeBatch(db);
       const refs = [];
       for (const d of chunk) {
         const ref = doc(col('caja'));
@@ -197,10 +221,10 @@ class FirestoreDB {
   }
 
   async deleteCajaMovimiento(id, usuario) {
-    const movSnap = await getDoc(docRef('caja', id));
+    const movSnap = await _getDoc(docRef('caja', id));
     if (movSnap.exists()) {
       const mov = movSnap.data();
-      await addDoc(col('auditoria'), {
+      await _addDoc(col('auditoria'), {
         fecha: mov.fecha, usuario: usuario || 'sistema',
         accion: 'ELIMINACION', modulo: 'Caja',
         detalle: `Eliminado: ${mov.tipo} (${mov.categoria}) cod=${mov.codigo} monto=$${mov.monto} saldo_nuevo=$${mov.saldo_nuevo} origen=${mov.origen} desc="${mov.descripcion}"`,
@@ -208,31 +232,31 @@ class FirestoreDB {
         creado: new Date().toISOString(),
       });
     }
-    await deleteDoc(docRef('caja', id));
+    await _deleteDoc(docRef('caja', id));
     await this._recalculateFromScratch(mov.categoria);
   }
 
   async updateCajaMovimiento(id, updates) {
-    await updateDoc(docRef('caja', id), updates);
+    await _updateDoc(docRef('caja', id), updates);
     await this._recalculateFromScratch(updates.categoria);
-    const snap = await getDoc(docRef('caja', id));
+    const snap = await _getDoc(docRef('caja', id));
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   }
 
   async _recalculateFromScratch(onlyCategoria) {
     let all;
     if (onlyCategoria) {
-      const snap = await getDocs(query(col('caja'), where('categoria', '==', onlyCategoria)));
+      const snap = await _getDocs(query(col('caja'), where('categoria', '==', onlyCategoria)));
       all = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(compararCronologico);
     } else {
-      const allSnap = await getDocs(col('caja'));
+      const allSnap = await _getDocs(col('caja'));
       all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(compararCronologico);
     }
     const estado = await this.getEstadoSaldos();
     const saldos = onlyCategoria
       ? { ...estado, [onlyCategoria]: 0 }
       : { Blanco: 0, Negro: 0 };
-    let batch = writeBatch(db);
+    let batch = _writeBatch(db);
     let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
@@ -243,7 +267,7 @@ class FirestoreDB {
         count++;
         if (count % 500 === 0) {
           await batch.commit();
-          batch = writeBatch(db);
+          batch = _writeBatch(db);
         }
       }
     }
@@ -258,7 +282,7 @@ class FirestoreDB {
       if (fechaInicio) constraints.push(where('fecha', '>=', fechaInicio));
       if (fechaFin) constraints.push(where('fecha', '<=', fechaFin));
       q = query(q, ...constraints);
-      const snap = await getDocs(q);
+      const snap = await _getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
     }
     return getAllRaw('ventas');
@@ -268,13 +292,13 @@ class FirestoreDB {
     const docData = {
       ...venta, creado: new Date().toISOString(),
     };
-    const ref = await addDoc(col('ventas'), docData);
+    const ref = await _addDoc(col('ventas'), docData);
 
     if (venta.medio_pago === 'Efectivo') {
       const categoria = venta.categoria || 'Blanco';
       const lastSaldo = await this._getLastSaldo(categoria);
       const nuevoSaldo = lastSaldo + venta.monto;
-      await addDoc(col('caja'), {
+      await _addDoc(col('caja'), {
         fecha: venta.fecha, tipo: 'Ingreso en Caja', codigo: 502,
         categoria,
         descripcion: `Venta ${categoria} - ${venta.descripcion || ''}`,
@@ -294,7 +318,7 @@ class FirestoreDB {
     const BATCH_SIZE = 500;
     for (let i = 0; i < ventas.length; i += BATCH_SIZE) {
       const chunk = ventas.slice(i, i + BATCH_SIZE);
-      const batch = writeBatch(db);
+      const batch = _writeBatch(db);
       const refs = [];
       for (const venta of chunk) {
         const docData = { ...venta, creado: new Date().toISOString() };
@@ -315,10 +339,10 @@ class FirestoreDB {
   }
 
   async deleteVenta(id, usuario) {
-    const ventaSnap = await getDoc(docRef('ventas', id));
+    const ventaSnap = await _getDoc(docRef('ventas', id));
     if (ventaSnap.exists()) {
       const venta = ventaSnap.data();
-      await addDoc(col('auditoria'), {
+      await _addDoc(col('auditoria'), {
         fecha: venta.fecha, usuario: usuario || 'sistema',
         accion: 'ELIMINACION', modulo: 'Ventas',
         detalle: `Eliminada: ${venta.tipo} (${venta.categoria || 'Tarjeta'}) monto=$${venta.monto} medio=${venta.medio_pago} banco=${venta.banco || '-'} cuotas=${venta.cuotas} desc="${venta.descripcion}"`,
@@ -327,28 +351,28 @@ class FirestoreDB {
       });
       if (venta.medio_pago === 'Efectivo') {
         const categoria = venta.categoria || 'Blanco';
-        const cajaSnap = await getDocs(query(col('caja'),
+        const cajaSnap = await _getDocs(query(col('caja'),
           where('origen', '==', 'venta'),
           where('fecha', '==', venta.fecha),
           where('monto', '==', venta.monto),
           where('categoria', '==', categoria),
         ));
         if (!cajaSnap.empty) {
-          await deleteDoc(docRef('caja', cajaSnap.docs[0].id));
+          await _deleteDoc(docRef('caja', cajaSnap.docs[0].id));
           await this._recalculateFromScratch(categoria);
         }
       }
     }
-    await deleteDoc(docRef('ventas', id));
+    await _deleteDoc(docRef('ventas', id));
   }
 
   // Elimina TODOS los movimientos de caja de una fecha y recalcula saldos completos.
   async deleteCajaDia(fecha, usuario) {
-    const snap = await getDocs(query(col('caja'), where('fecha', '==', fecha)));
+    const snap = await _getDocs(query(col('caja'), where('fecha', '==', fecha)));
     if (snap.empty) return 0;
     const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const resumen = { Blanco: { n: 0, total: 0 }, Negro: { n: 0, total: 0 } };
-    let batch = writeBatch(db);
+    let batch = _writeBatch(db);
     for (let i = 0; i < docs.length; i++) {
       const m = docs[i];
       const cat = m.categoria || 'Blanco';
@@ -357,11 +381,11 @@ class FirestoreDB {
       batch.delete(docRef('caja', m.id));
       if ((i + 1) % 400 === 0) {
         await batch.commit();
-        batch = writeBatch(db);
+        batch = _writeBatch(db);
       }
     }
     if (docs.length % 400 !== 0) await batch.commit();
-    await addDoc(col('auditoria'), {
+    await _addDoc(col('auditoria'), {
       usuario: usuario || 'sistema',
       accion: 'ELIMINACION DIA COMPLETO', modulo: 'Caja',
       detalle: `Eliminado el dia ${fecha}: ${docs.length} movimientos (Blanco: ${resumen.Blanco.n} / $${resumen.Blanco.total} | Negro: ${resumen.Negro.n} / $${resumen.Negro.total})`,
@@ -373,20 +397,20 @@ class FirestoreDB {
 
   // Elimina TODAS las ventas de una fecha.
   async deleteVentasDia(fecha, usuario) {
-    const snap = await getDocs(query(col('ventas'), where('fecha', '==', fecha)));
+    const snap = await _getDocs(query(col('ventas'), where('fecha', '==', fecha)));
     if (snap.empty) return 0;
     const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    let batch = writeBatch(db);
+    let batch = _writeBatch(db);
     for (let i = 0; i < docs.length; i++) {
       batch.delete(docRef('ventas', docs[i].id));
       if ((i + 1) % 400 === 0) {
         await batch.commit();
-        batch = writeBatch(db);
+        batch = _writeBatch(db);
       }
     }
     if (docs.length % 400 !== 0) await batch.commit();
     const total = docs.reduce((s, v) => s + (v.monto || 0), 0);
-    await addDoc(col('auditoria'), {
+    await _addDoc(col('auditoria'), {
       usuario: usuario || 'sistema',
       accion: 'ELIMINACION DIA COMPLETO', modulo: 'Ventas',
       detalle: `Eliminado el dia ${fecha}: ${docs.length} ventas por $${total}`,
@@ -396,8 +420,8 @@ class FirestoreDB {
   }
 
   async updateVenta(id, updates) {
-    await updateDoc(docRef('ventas', id), updates);
-    const snap = await getDoc(docRef('ventas', id));
+    await _updateDoc(docRef('ventas', id), updates);
+    const snap = await _getDoc(docRef('ventas', id));
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   }
 
@@ -408,7 +432,7 @@ class FirestoreDB {
       if (fechaInicio) constraints.push(where('fecha', '>=', fechaInicio));
       if (fechaFin) constraints.push(where('fecha', '<=', fechaFin));
       q = query(q, ...constraints);
-      const snap = await getDocs(q);
+      const snap = await _getDocs(q);
       return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.creado || '').localeCompare(a.creado || ''));
     }
     return getAllRaw('cierres');
@@ -416,7 +440,7 @@ class FirestoreDB {
 
   async addCierre(cierre) {
     const docData = { ...cierre, creado: new Date().toISOString() };
-    const ref = await addDoc(col('cierres'), docData);
+    const ref = await _addDoc(col('cierres'), docData);
     return { id: ref.id, ...docData };
   }
 
@@ -426,14 +450,14 @@ class FirestoreDB {
 
   async addConciliacion(conc) {
     const docData = { ...conc, creado: new Date().toISOString() };
-    const ref = await addDoc(col('conciliaciones'), docData);
+    const ref = await _addDoc(col('conciliaciones'), docData);
     return { id: ref.id, ...docData };
   }
 
   async getAuditoria(limite) {
     if (limite) {
       // Solo los ultimos N registros (1 lectura por doc, ahorra cuota)
-      const snap = await getDocs(query(col('auditoria'), orderBy('creado', 'desc'), firestoreLimit(limite)));
+      const snap = await _getDocs(query(col('auditoria'), orderBy('creado', 'desc'), firestoreLimit(limite)));
       return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
     return getAllRaw('auditoria');
@@ -441,16 +465,16 @@ class FirestoreDB {
 
   async addAuditoria(log) {
     const docData = { ...log, fecha: new Date().toISOString() };
-    const ref = await addDoc(col('auditoria'), docData);
+    const ref = await _addDoc(col('auditoria'), docData);
     return { id: ref.id, ...docData };
   }
 
   async getConfiguracion() {
     try {
-      const snap = await getDocs(query(col('configuracion'), firestoreLimit(1)));
+      const snap = await _getDocs(query(col('configuracion'), firestoreLimit(1)));
       if (snap.empty) {
         const defaultConfig = { iva: 21, limites_caja: { minimo: 10000, maximo: 200000 } };
-        const ref = await addDoc(col('configuracion'), defaultConfig);
+        const ref = await _addDoc(col('configuracion'), defaultConfig);
         return { id: ref.id, ...defaultConfig };
       }
       return { id: snap.docs[0].id, ...snap.docs[0].data() };
@@ -461,11 +485,11 @@ class FirestoreDB {
   }
 
   async updateConfiguracion(config) {
-    const snap = await getDocs(query(col('configuracion'), firestoreLimit(1)));
+    const snap = await _getDocs(query(col('configuracion'), firestoreLimit(1)));
     if (!snap.empty) {
-      await updateDoc(docRef('configuracion', snap.docs[0].id), config);
+      await _updateDoc(docRef('configuracion', snap.docs[0].id), config);
     } else {
-      await addDoc(col('configuracion'), config);
+      await _addDoc(col('configuracion'), config);
     }
   }
 
@@ -477,10 +501,10 @@ class FirestoreDB {
     const docData = { creado: new Date().toISOString(), ...userData };
     // Doc con ID = uid: las reglas de Firestore verifican el rol leyendo users/{uid}
     if (userData.uid) {
-      await setDoc(docRef('users', userData.uid), docData);
+      await _setDoc(docRef('users', userData.uid), docData);
       return { id: userData.uid, ...docData };
     }
-    const ref = await addDoc(col('users'), docData);
+    const ref = await _addDoc(col('users'), docData);
     return { id: ref.id, ...docData };
   }
 
@@ -489,7 +513,7 @@ class FirestoreDB {
   async ensurePerfilUid(perfil) {
     try {
       const ref = docRef('users', perfil.uid);
-      const snap = await getDoc(ref);
+      const snap = await _getDoc(ref);
       if (snap.exists()) return snap.data();
       const all = await getAllRaw('users');
       const legacy = all.find((u) => u.uid === perfil.uid || u.email === perfil.email);
@@ -501,7 +525,7 @@ class FirestoreDB {
         creado: legacy?.creado || new Date().toISOString(),
         migrado: new Date().toISOString(),
       };
-      await setDoc(ref, data);
+      await _setDoc(ref, data);
       return data;
     } catch (e) {
       console.warn('ensurePerfilUid:', e?.message || e);
@@ -509,12 +533,18 @@ class FirestoreDB {
     }
   }
 
+  // Cambiar el rol de un usuario (se usa desde Gestion de Usuarios; afecta tras re-login)
+  async updateUserRol(uid, rol) {
+    await conTimeout(_updateDoc(docRef('users', uid), { rol, modificado: new Date().toISOString() }));
+    return true;
+  }
+
   async addAuditLog(usuario, accion, modulo, detalle) {
     return this.addAuditoria({ usuario, accion, modulo, detalle });
   }
 
   async recalcularSaldosCompletos() {
-    const allSnap = await getDocs(col('caja'));
+    const allSnap = await _getDocs(col('caja'));
     const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const saldos = computeSaldos(all);
     await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: SALDO_VERSION });
@@ -623,7 +653,7 @@ class FirestoreDB {
     const collections = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'configuracion', 'users'];
     const data = {};
     for (const name of collections) {
-      const snap = await getDocs(col(name));
+      const snap = await _getDocs(col(name));
       data[name] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
     data._meta = { fecha: new Date().toISOString(), collections };
@@ -633,15 +663,15 @@ class FirestoreDB {
   async deleteAllCollections() {
     const collections = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'configuracion', 'users'];
     for (const name of collections) {
-      const snap = await getDocs(col(name));
-      let batch = writeBatch(db);
+      const snap = await _getDocs(col(name));
+      let batch = _writeBatch(db);
       let count = 0;
       for (const d of snap.docs) {
         batch.delete(d.ref);
         count++;
         if (count % 500 === 0) {
           await batch.commit();
-          batch = writeBatch(db);
+          batch = _writeBatch(db);
           await new Promise((r) => setTimeout(r, 50));
         }
       }
@@ -659,7 +689,7 @@ class FirestoreDB {
     for (const name of collections) {
       const items = backup[name];
       if (!Array.isArray(items)) continue;
-      let batch = writeBatch(db);
+      let batch = _writeBatch(db);
       let count = 0;
       for (const item of items) {
         const { id, ...data } = item;
@@ -668,7 +698,7 @@ class FirestoreDB {
         count++; total++;
         if (count % 450 === 0) {
           await batch.commit();
-          batch = writeBatch(db);
+          batch = _writeBatch(db);
           await new Promise((r) => setTimeout(r, 50));
         }
       }
@@ -677,11 +707,11 @@ class FirestoreDB {
     return total;
   }
 
-  // ===== LUXCAR (cumpleaños / día del niño / navidad) =====
+  // ===== LUXCAR (cumpleaÃ±os / dÃ­a del niÃ±o / navidad) =====
   // Un doc por tipo con el array completo de personas: 1 lectura por tipo,
   // la carga sobrescribe (setDoc) y nunca borra -> no requiere permiso admin.
   async getLuxcarAll() {
-    const snap = await getDocs(col('luxcar_personas'));
+    const snap = await _getDocs(col('luxcar_personas'));
     const out = { cumple: [], nino: [], navidad: [] };
     snap.docs.forEach((d) => {
       if (out[d.id]) out[d.id] = d.data().personas || [];
@@ -690,7 +720,7 @@ class FirestoreDB {
   }
 
   async guardarLuxcarPersonas(tipo, personas) {
-    await setDoc(docRef('luxcar_personas', tipo), {
+    await _setDoc(docRef('luxcar_personas', tipo), {
       personas,
       cantidad: personas.length,
       actualizado: new Date().toISOString(),
@@ -703,7 +733,7 @@ class FirestoreDB {
     const counts = {};
     for (const name of names) {
       try {
-        const snap = await conTimeout(getCountFromServer(col(name)), 10000);
+        const snap = await conTimeout(_getCountFromServer(col(name)), 10000);
         counts[name] = snap.data().count;
       } catch { counts[name] = -1; }
     }

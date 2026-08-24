@@ -126,6 +126,9 @@ Blanco = declarado (amarillo #facc15), Negro = no declarado (gris).
 13. **Modales de Caja**: editar muestra SOLO Tipo/Monto/Descripción (categoría se conserva); click fuera NO cierra ningún modal; popups abren en la parte superior. Fix raíz del scroll: `pageEnter` terminaba con transform retenido que rompía el position:fixed del overlay — ahora termina en `transform:none`; overlay con `align-items:flex-start + padding-top 7vh` (global para todos los modales)
 14. **Eliminar día completo** en Libro de Caja y Libro de Ventas: tacho rojo en la cabecera de cada día (solo visible admin — las reglas solo permiten DELETE a admin), confirmación incluida, audita como "ELIMINACION DIA COMPLETO" con resumen por categoría; métodos nuevos `deleteCajaDia(fecha)` (recalcula todo al final) y `deleteVentasDia(fecha)`
 15. Los montos diarios ("Ingresos de Hoy", desglose Dashboard, agrupación de libros) SIEMPRE usan la fecha real del movimiento (`fecha === hoy`), no la fecha de carga — verificado en código y con E2E
+16. **Reportes**: el Ranking Medios Electrónicos se calcula sobre TODO el histórico (`allVentas`, independiente del filtro de fechas) y Tendencia Mensual tiene chips `6/12/24/36/Todos` (estado `mesesHist`)
+17. **Salud de Firebase** (Configuración): `utils/firebaseUsage.js` cuenta lecturas/escrituras/eliminaciones del día en localStorage (cero consumo de cuota) vía wrappers `_getDocs/_setDoc/_writeBatch...` en firestoreDB; muestra barras vs límites Spark (50k lecturas / 20k escrituras / 20k eliminaciones) con semáforo SALUDABLE/ATENCION/CRITICO
+18. **Default de fechas = mes en curso** en todas las secciones (`dateUtils.defaultDateFrom` = día 1 del mes actual); **Gestión de Usuarios permite cambiar rol** (selector admin/operador solo para admins, método `updateUserRol`, efecto tras re-login, no permite cambiar la propia cuenta)
 
 ## Pendientes conocidos
 
