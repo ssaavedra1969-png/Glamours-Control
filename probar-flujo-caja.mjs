@@ -78,9 +78,10 @@ const dia = (fecha, a500, a501, a502, a503) => [
 
 const fail = (msg) => { console.error('FALLÓ: ' + msg); process.exit(1); };
 
-// ESTADO INICIAL esperado: 28 docs, 12292
+// ESTADO INICIAL: se captura dinamicamente (la base puede tener historico completo)
 let chk = await integridad();
 if (chk.mal !== 0) fail(`estado inicial inconsistente (${chk.mal})`);
+const DOCS_INICIO = chk.total;
 console.log(`INICIO: ${chk.total} docs, integridad OK`);
 
 // PASO 1: carga DESORDENADA - dia 16 intercalado y dia 22 al final (en un solo lote, como addBulk)
@@ -121,7 +122,7 @@ const borrados22 = await borrarDia('2026-08-22');
 const r4 = await recalcularTodo();
 chk = await integridad();
 console.log(`\nPASO 4: borrado dia 22 completo (${borrados22} docs) | total docs: ${chk.total} | integridad ${chk.mal === 0 ? 'OK' : 'MAL'}`);
-if (borrados22 !== 4 || chk.total !== 28 || chk.mal !== 0) fail('no volvio al estado original');
+if (borrados22 !== 4 || chk.total !== DOCS_INICIO || chk.mal !== 0) fail('no volvio al estado original');
 if (r4.saldos.Blanco !== 12292) fail(`saldo final debia ser 12292, obtuvo ${r4.saldos.Blanco}`);
 console.log(`        saldo final = ${fmt(r4.saldos.Blanco)} ✔ RESTAURADO AL VALOR ORIGINAL`);
 

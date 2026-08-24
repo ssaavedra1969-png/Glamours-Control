@@ -129,6 +129,7 @@ Blanco = declarado (amarillo #facc15), Negro = no declarado (gris).
 16. **Reportes**: el Ranking Medios Electrónicos se calcula sobre TODO el histórico (`allVentas`, independiente del filtro de fechas) y Tendencia Mensual tiene chips `6/12/24/36/Todos` (estado `mesesHist`)
 17. **Salud de Firebase** (Configuración): `utils/firebaseUsage.js` cuenta lecturas/escrituras/eliminaciones del día en localStorage (cero consumo de cuota) vía wrappers `_getDocs/_setDoc/_writeBatch...` en firestoreDB; muestra barras vs límites Spark (50k lecturas / 20k escrituras / 20k eliminaciones) con semáforo SALUDABLE/ATENCION/CRITICO
 18. **Default de fechas = mes en curso** en todas las secciones (`dateUtils.defaultDateFrom` = día 1 del mes actual); **Gestión de Usuarios permite cambiar rol** (selector admin/operador solo para admins, método `updateUserRol`, efecto tras re-login, no permite cambiar la propia cuenta)
+19. **Caché anti-relectura** (ahorro de cuota Firestore): `getAllRaw()` cachea lecturas completas de `caja`/`ventas` en sessionStorage (TTL 10 min, claves `gl_all_caja`/`gl_all_ventas`) y los wrappers de escritura (`_addDoc/_setDoc/_updateDoc/_deleteDoc`/batch commit) invalidan el caché — navegar entre secciones ya no relee miles de docs; cada escritura fuerza relectura fresca. La card Salud de Firebase aclara entorno: en emulador avisa que NO consume cuota real de Google. OJO: `probar-flujo-caja.mjs` ahora captura el total inicial de docs dinámicamente (antes esperaba 28 hardcodeado)
 
 ## Pendientes conocidos
 

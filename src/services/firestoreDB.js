@@ -28,10 +28,10 @@ const ESTADO_DOC = 'caja';
 // ============================================================
 const _getDocs = async (q) => { const s = await getDocs(q); trackOp('lectura', s.size); return s; };
 const _getDoc = async (r) => { const s = await getDoc(r); if (s.exists()) trackOp('lectura', 1); return s; };
-const _addDoc = async (r, d) => { trackOp('escritura', 1); return addDoc(r, d); };
-const _setDoc = (r, d, o) => { trackOp('escritura', 1); return setDoc(r, d, o); };
-const _updateDoc = (r, d) => { trackOp('escritura', 1); return updateDoc(r, d); };
-const _deleteDoc = (r) => { trackOp('eliminacion', 1); return deleteDoc(r); };
+const _addDoc = async (r, d) => { trackOp('escritura', 1); _cacheInvalidateAll(); return addDoc(r, d); };
+const _setDoc = (r, d, o) => { trackOp('escritura', 1); _cacheInvalidateAll(); return setDoc(r, d, o); };
+const _updateDoc = (r, d) => { trackOp('escritura', 1); _cacheInvalidateAll(); return updateDoc(r, d); };
+const _deleteDoc = (r) => { trackOp('eliminacion', 1); _cacheInvalidateAll(); return deleteDoc(r); };
 const _getCountFromServer = async (q) => { const s = await getCountFromServer(q); trackOp('lectura', 1); return s; };
 const _writeBatch = () => {
   const b = writeBatch(db);
@@ -40,7 +40,7 @@ const _writeBatch = () => {
   b.set = (...a) => { esc++; return oSet(...a); };
   b.update = (...a) => { esc++; return oUpd(...a); };
   b.delete = (...a) => { eli++; return oDel(...a); };
-  b.commit = async () => { const r = await oCom(); if (esc) trackOp('escritura', esc); if (eli) trackOp('eliminacion', eli); return r; };
+  b.commit = async () => { const r = await oCom(); _cacheInvalidateAll(); if (esc) trackOp('escritura', esc); if (eli) trackOp('eliminacion', eli); return r; };
   return b;
 };
 
@@ -60,9 +60,44 @@ const _writeBatch = () => {
 // ============================================================
 export const SALDO_VERSION = 7;
 
-async function getAllRaw(collectionName) {
+// ============================================================
+//  CACHE DE SESION para lecturas completas de colecciones grandes
+//  (caja ~4000 docs, ventas ~2800). Evita releer TODO en cada
+//  navegacion/cambio de seccion. Se invalida automaticamente en
+//  cualquier escritura (ver wrappers mas abajo). TTL 10 minutos.
+// ============================================================
+const LECTURA_TTL = 10 * 60 * 1000;
+const _cacheKey = (n) => (n === 'caja' ? 'gl_all_caja' : n === 'ventas' ? 'gl_all_ventas' : null);
+function _cacheHit(n) {
+  const key = _cacheKey(n);
+  if (!key) return null;
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (raw && Date.now() - raw.t < LECTURA_TTL) return raw.data;
+    if (raw) sessionStorage.removeItem(key);
+  } catch { /* ignorar */ }
+  return null;
+}
+function _cachePut(n, data) {
+  const key = _cacheKey(n);
+  if (!key) return;
+  try { sessionStorage.setItem(key, JSON.stringify({ t: Date.now(), data })); } catch { // almacen lleno: seguir sin cache
+    try { sessionStorage.removeItem('gl_all_caja'); sessionStorage.removeItem('gl_all_ventas'); } catch { /* noop */ }
+  }
+}
+function _cacheInvalidateAll() {
+  try { sessionStorage.removeItem('gl_all_caja'); sessionStorage.removeItem('gl_all_ventas'); } catch { /* noop */ }
+}
+
+async function getAllRaw(collectionName, force = false) {
+  if (!force) {
+    const hit = _cacheHit(collectionName);
+    if (hit) return hit;
+  }
   const snap = await _getDocs(col(collectionName));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const out = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  _cachePut(collectionName, out);
+  return out;
 }
 
 function aplicarMovimiento(saldos, cat, codigo, monto) {

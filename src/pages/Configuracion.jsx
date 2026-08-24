@@ -276,6 +276,11 @@ export default function Configuracion() {
               );
             })()}
           </div>
+          <p style={{ fontSize: '0.72rem', color: esEmulador ? '#facc15' : '#6b7280', marginTop: 0, marginBottom: '1rem' }}>
+            {esEmulador
+              ? 'Estas en EMULADOR LOCAL: las operaciones de este contador van al emulador y NO consumen la cuota real de Google.'
+              : 'Contador de ESTE navegador contra la base REAL de Firebase.'}
+          </p>
           <div style={{ display: 'grid', gap: '0.75rem' }}>
             {[['lectura', 'Lecturas'], ['escritura', 'Escrituras'], ['eliminacion', 'Eliminaciones']].map(([tipo, label]) => {
               const usado = uso[tipo];
