@@ -9,7 +9,7 @@ import DateFilter from '../components/DateFilter';
 import toast from 'react-hot-toast';
 
 export default function Caja() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [movimientos, setMovimientos] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -137,6 +137,18 @@ export default function Caja() {
     mockDB.addAuditLog(user.email, 'Eliminacion de movimiento', 'Caja', `ID: ${id}`);
     toast.success('Movimiento eliminado');
     loadData();
+  };
+
+  const handleDeleteDia = async (date) => {
+    const items = groupedByDate[date] || [];
+    if (!confirm(`Eliminar TODOS los movimientos del dia ${date} (${items.length})? Esta accion no se puede deshacer.`)) return;
+    try {
+      const n = await mockDB.deleteCajaDia(date, user.email);
+      toast.success(`Dia ${date} eliminado (${n} movimientos)`);
+      loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   const handleCierre = async (e) => {
@@ -423,6 +435,17 @@ export default function Caja() {
                       </span>
                     )}
                   </div>
+
+                  {isAdmin && (
+                    <button
+                      className="btn-icon"
+                      title="Eliminar el dia completo"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteDia(date); }}
+                      style={{ color: '#ef4444', flexShrink: 0 }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
 
                 {/* Detalle del dia (expandible) */}
@@ -565,8 +588,8 @@ export default function Caja() {
       {/* ============================================ */}
 
       {/* Modal Registrar */}
-      <div className={`modal-overlay ${showModal ? 'active' : ''}`} onClick={() => setShowModal(false)}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-overlay ${showModal ? 'active' : ''}`}>
+        <div className="modal">
           <h2>Registrar Movimiento de Caja</h2>
           <form onSubmit={handleAdd}>
             <div className="form-group"><label>Categoria</label><select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}><option value="Blanco">Blanco (Declarado)</option><option value="Negro">Negro (No declarado)</option></select></div>
@@ -579,11 +602,10 @@ export default function Caja() {
       </div>
 
       {/* Modal Editar */}
-      <div className={`modal-overlay ${showEdit ? 'active' : ''}`} onClick={() => setShowEdit(false)}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-overlay ${showEdit ? 'active' : ''}`}>
+        <div className="modal">
           <h2><Edit3 size={18} /> Editar Movimiento</h2>
           <form onSubmit={handleEdit}>
-            <div className="form-group"><label>Categoria</label><select value={editForm.categoria} onChange={(e) => setEditForm({ ...editForm, categoria: e.target.value })}><option value="Blanco">Blanco (Declarado)</option><option value="Negro">Negro (No declarado)</option></select></div>
             <div className="form-group"><label>Tipo</label><select value={editForm.tipo} onChange={(e) => setEditForm({ ...editForm, tipo: e.target.value })}><option value="Ingreso en Caja">Ingreso en Caja (502)</option><option value="Egreso en Caja">Egreso en Caja (501)</option><option value="Retiro de Caja">Retiro de Caja (503)</option></select></div>
             <div className="form-group"><label>Monto ($)</label><input type="number" value={editForm.monto} onChange={(e) => setEditForm({ ...editForm, monto: e.target.value })} min="1" required /></div>
             <div className="form-group"><label>Descripcion</label><input type="text" value={editForm.descripcion} onChange={(e) => setEditForm({ ...editForm, descripcion: e.target.value })} /></div>
@@ -593,8 +615,8 @@ export default function Caja() {
       </div>
 
       {/* Modal Cierre */}
-      <div className={`modal-overlay ${showCierre ? 'active' : ''}`} onClick={() => setShowCierre(false)}>
-        <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-overlay ${showCierre ? 'active' : ''}`}>
+        <div className="modal">
           <h2>Cierre de Caja Diario</h2>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
             <div style={{ padding: '1rem', background: 'rgba(250,204,21,0.08)', borderRadius: '8px', border: '1px solid rgba(250,204,21,0.2)' }}>

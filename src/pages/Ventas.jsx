@@ -13,7 +13,7 @@ import toast from 'react-hot-toast';
 const TARJETAS = ['Visa - Banco Nacion', 'Mastercard - Banco Galicia', 'Visa - Banco Santander', 'Amex - BBVA', 'Cabal - Banco Macro', 'Naranja'];
 
 export default function Ventas() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [ventas, setVentas] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -121,6 +121,18 @@ export default function Ventas() {
     mockDB.addAuditLog(user.email, 'Eliminacion de venta', 'Ventas', `ID: ${id}`);
     toast.success('Venta eliminada');
     loadData();
+  };
+
+  const handleDeleteDia = async (date) => {
+    const items = groupedByDate[date] || [];
+    if (!confirm(`Eliminar TODAS las ventas del dia ${date} (${items.length})? Esta accion no se puede deshacer.`)) return;
+    try {
+      const n = await mockDB.deleteVentasDia(date, user.email);
+      toast.success(`Dia ${date} eliminado (${n} ventas)`);
+      loadData();
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   const handleExport = (type) => {
@@ -364,6 +376,17 @@ export default function Ventas() {
                       {formatCurrency(ds.total)}
                     </span>
                   </div>
+
+                  {isAdmin && (
+                    <button
+                      className="btn-icon"
+                      title="Eliminar el dia completo"
+                      onClick={(e) => { e.stopPropagation(); handleDeleteDia(date); }}
+                      style={{ color: '#ef4444', flexShrink: 0 }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
 
                 {expanded && (

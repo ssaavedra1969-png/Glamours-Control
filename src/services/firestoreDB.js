@@ -142,9 +142,9 @@ class FirestoreDB {
       origen: mov.origen || 'manual', creado: new Date().toISOString(),
     };
     const ref = await addDoc(col('caja'), docData);
-    const saldosEstado = await this.getEstadoSaldos();
-    saldosEstado[categoria] = nuevoSaldo;
-    await this.setEstadoSaldos(saldosEstado);
+    // Recalculo de la categoria: si el movimiento es de una fecha atrasada,
+    // la cadena posterior queda consistente igualmente.
+    await this._recalculateFromScratch(categoria);
     return { id: ref.id, ...docData };
   }
 
@@ -189,7 +189,10 @@ class FirestoreDB {
       }
     }
 
-    await this.setEstadoSaldos(saldos);
+    // Recalculo cronologico completo: hace la carga INDEPENDIENTE del orden.
+    // Corrige cadenas de dias previos si entraron datos intercalados/atrasados
+    // y deja el estado con el ultimo dia real, no con el ultimo archivo procesado.
+    await this._recalculateFromScratch();
     return saved;
   }
 
@@ -337,6 +340,59 @@ class FirestoreDB {
       }
     }
     await deleteDoc(docRef('ventas', id));
+  }
+
+  // Elimina TODOS los movimientos de caja de una fecha y recalcula saldos completos.
+  async deleteCajaDia(fecha, usuario) {
+    const snap = await getDocs(query(col('caja'), where('fecha', '==', fecha)));
+    if (snap.empty) return 0;
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const resumen = { Blanco: { n: 0, total: 0 }, Negro: { n: 0, total: 0 } };
+    let batch = writeBatch(db);
+    for (let i = 0; i < docs.length; i++) {
+      const m = docs[i];
+      const cat = m.categoria || 'Blanco';
+      resumen[cat].n++;
+      resumen[cat].total += m.monto || 0;
+      batch.delete(docRef('caja', m.id));
+      if ((i + 1) % 400 === 0) {
+        await batch.commit();
+        batch = writeBatch(db);
+      }
+    }
+    if (docs.length % 400 !== 0) await batch.commit();
+    await addDoc(col('auditoria'), {
+      usuario: usuario || 'sistema',
+      accion: 'ELIMINACION DIA COMPLETO', modulo: 'Caja',
+      detalle: `Eliminado el dia ${fecha}: ${docs.length} movimientos (Blanco: ${resumen.Blanco.n} / $${resumen.Blanco.total} | Negro: ${resumen.Negro.n} / $${resumen.Negro.total})`,
+      creado: new Date().toISOString(),
+    });
+    await this._recalculateFromScratch();
+    return docs.length;
+  }
+
+  // Elimina TODAS las ventas de una fecha.
+  async deleteVentasDia(fecha, usuario) {
+    const snap = await getDocs(query(col('ventas'), where('fecha', '==', fecha)));
+    if (snap.empty) return 0;
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    let batch = writeBatch(db);
+    for (let i = 0; i < docs.length; i++) {
+      batch.delete(docRef('ventas', docs[i].id));
+      if ((i + 1) % 400 === 0) {
+        await batch.commit();
+        batch = writeBatch(db);
+      }
+    }
+    if (docs.length % 400 !== 0) await batch.commit();
+    const total = docs.reduce((s, v) => s + (v.monto || 0), 0);
+    await addDoc(col('auditoria'), {
+      usuario: usuario || 'sistema',
+      accion: 'ELIMINACION DIA COMPLETO', modulo: 'Ventas',
+      detalle: `Eliminado el dia ${fecha}: ${docs.length} ventas por $${total}`,
+      creado: new Date().toISOString(),
+    });
+    return docs.length;
   }
 
   async updateVenta(id, updates) {

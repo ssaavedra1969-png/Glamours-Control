@@ -69,7 +69,7 @@ body {
 
 /* Page enter */
 .page-enter { animation: pageEnter 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
-@keyframes pageEnter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pageEnter { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
 .loading-screen { display: flex; justify-content: center; align-items: center; height: 100vh; }
 .spinner {
@@ -375,7 +375,8 @@ th.amount { text-align: right; }
 .modal-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
-  display: flex; justify-content: center; align-items: center; z-index: 1000;
+  display: flex; justify-content: center; align-items: flex-start; z-index: 1000;
+  padding-top: 7vh;
   opacity: 0; pointer-events: none; transition: opacity 0.25s ease;
 }
 .modal-overlay.active { opacity: 1; pointer-events: all; }

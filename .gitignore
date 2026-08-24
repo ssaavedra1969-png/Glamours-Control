@@ -32,3 +32,11 @@ Backups/*.json
 Backups/*.ica
 Backups/package.json
 TEST_*.xlsx
+opencode.json
+
+# Datos locales del usuario (NO subir)
+Calendario/
+ENTRADA/
+Pendientes/
+cumple/
+opencode_anterior.json
