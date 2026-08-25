@@ -58,7 +58,7 @@ const _writeBatch = () => {
 //    500=10592, 502=482300, 501=480600, 503=480600
 //    Saldo = 10592 + 482300 - 480600 = 12292 (503 NO resta)
 // ============================================================
-export const SALDO_VERSION = 7;
+export const SALDO_VERSION = 8;
 
 // ============================================================
 //  CACHE DE SESION para lecturas completas de colecciones grandes
@@ -308,6 +308,7 @@ class FirestoreDB {
     }
     if (count % 500 !== 0) await batch.commit();
     await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: SALDO_VERSION });
+    return { total: all.length, updated: count };
   }
 
   async getVentas(fechaInicio, fechaFin) {
@@ -350,6 +351,7 @@ class FirestoreDB {
 
   async addBulkVentas(ventas, onProgress) {
     const saved = [];
+    const cajaEfectivo = [];
     const BATCH_SIZE = 500;
     for (let i = 0; i < ventas.length; i += BATCH_SIZE) {
       const chunk = ventas.slice(i, i + BATCH_SIZE);
@@ -360,6 +362,9 @@ class FirestoreDB {
         const ref = doc(col('ventas'));
         batch.set(ref, docData);
         refs.push({ ref, data: docData });
+        if (venta.medio_pago === 'Efectivo') {
+          cajaEfectivo.push(venta);
+        }
       }
       await batch.commit();
       for (const { ref, data } of refs) {
@@ -370,6 +375,27 @@ class FirestoreDB {
         await new Promise((r) => setTimeout(r, 100));
       }
     }
+
+    if (cajaEfectivo.length > 0) {
+      const saldos = await this.getEstadoSaldos();
+      const now = new Date().toISOString();
+      const batchCaja = _writeBatch(db);
+      for (const v of cajaEfectivo) {
+        const cat = v.categoria || 'Blanco';
+        const { anterior, nuevo } = aplicarMovimiento(saldos, cat, 502, v.monto);
+        const ref = doc(col('caja'));
+        batchCaja.set(ref, {
+          fecha: v.fecha, tipo: 'Ingreso en Caja', codigo: 502,
+          categoria: cat,
+          descripcion: `Venta ${cat} - ${v.descripcion || ''}`,
+          monto: v.monto, saldo_anterior: anterior, saldo_nuevo: nuevo,
+          usuario: v.usuario || 'sistema', origen: 'venta', creado: now,
+        });
+      }
+      await batchCaja.commit();
+      await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: SALDO_VERSION });
+    }
+
     return saved;
   }
 
@@ -579,11 +605,9 @@ class FirestoreDB {
   }
 
   async recalcularSaldosCompletos() {
-    const allSnap = await _getDocs(col('caja'));
-    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const saldos = computeSaldos(all);
-    await this.setEstadoSaldos({ Blanco: saldos.Blanco, Negro: saldos.Negro, _version: SALDO_VERSION });
-    return { blanco: saldos.Blanco, negro: saldos.Negro, total: all.length, updated: 0 };
+    const result = await this._recalculateFromScratch();
+    const saldos = await this.getEstadoSaldos();
+    return { blanco: saldos.Blanco || 0, negro: saldos.Negro || 0, total: result.total, updated: result.updated };
   }
 
   async processExcelFile(rawData, fileName, fileDate, onProgress) {
@@ -761,6 +785,100 @@ class FirestoreDB {
       actualizado: new Date().toISOString(),
     });
     return personas.length;
+  }
+
+  async migrarVentasCaja(onProgress) {
+    const [allVentas, allCaja] = await Promise.all([
+      _getDocs(col('ventas')),
+      _getDocs(col('caja')),
+    ]);
+    const ventas = allVentas.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const caja = allCaja.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const ventasEfectivo = ventas.filter((v) => v.medio_pago === 'Efectivo');
+
+    const existingVentaIds = caja.filter((c) => c.origen === 'venta' && c.codigo === 502).map((c) => c.id);
+    if (existingVentaIds.length > 0) {
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < existingVentaIds.length; i += BATCH_SIZE) {
+        const batch = _writeBatch(db);
+        for (const id of existingVentaIds.slice(i, i + BATCH_SIZE)) {
+          batch.delete(docRef('caja', id));
+        }
+        await batch.commit();
+      }
+    }
+
+    const cajaFresh = (await _getDocs(col('caja'))).docs.map((d) => ({ id: d.id, ...d.data() }));
+    const caja502 = cajaFresh.filter((c) => c.codigo === 502);
+
+    const missing = [];
+    for (const v of ventasEfectivo) {
+      const exists = caja502.some((c) =>
+        c.fecha === v.fecha && c.monto === v.monto && (c.categoria || '') === (v.categoria || 'Blanco')
+      );
+      if (!exists) missing.push(v);
+    }
+
+    if (missing.length === 0) return { created: 0, deleted: existingVentaIds.length, total: ventasEfectivo.length };
+
+    missing.sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+
+    const saldos = { Blanco: 0, Negro: 0 };
+    const sortedCaja = [...cajaFresh].sort(compararCronologico);
+    for (const c of sortedCaja) {
+      const mult = c.codigo === 501 ? -1 : c.codigo === 503 ? 0 : 1;
+      const cat = c.categoria || 'Blanco';
+      saldos[cat] = (c.codigo === 500 ? c.monto : saldos[cat] + c.monto * mult);
+    }
+
+    const BATCH_SIZE = 500;
+    let created = 0;
+    for (let i = 0; i < missing.length; i += BATCH_SIZE) {
+      const chunk = missing.slice(i, i + BATCH_SIZE);
+      const batch = _writeBatch(db);
+      for (const v of chunk) {
+        const cat = v.categoria || 'Blanco';
+        const { anterior, nuevo } = aplicarMovimiento(saldos, cat, 502, v.monto);
+        const ref = doc(col('caja'));
+        batch.set(ref, {
+          fecha: v.fecha, tipo: 'Ingreso en Caja', codigo: 502,
+          categoria: cat,
+          descripcion: `Venta ${cat} - ${v.descripcion || ''}`,
+          monto: v.monto, saldo_anterior: anterior, saldo_nuevo: nuevo,
+          usuario: v.usuario || 'sistema', origen: 'venta', creado: new Date().toISOString(),
+        });
+      }
+      await batch.commit();
+      created += chunk.length;
+      if (onProgress) onProgress({ created, total: missing.length });
+    }
+
+    await this.recalcularSaldosCompletos();
+    return { created, deleted: existingVentaIds.length, total: ventasEfectivo.length };
+  }
+
+  async diagnosticarCaja() {
+    const allSnap = await _getDocs(col('caja'));
+    const all = allSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const porCodigo = {};
+    const porOrigen = {};
+    for (const m of all) {
+      porCodigo[m.codigo] = (porCodigo[m.codigo] || 0) + 1;
+      const key = `${m.codigo}_${m.origen || 'sin_origen'}`;
+      porOrigen[key] = (porOrigen[key] || 0) + 1;
+    }
+    const fechas = [...new Set(all.map((m) => m.fecha))].sort();
+    const saldos = computeSaldos(all);
+    return {
+      total: all.length,
+      porCodigo,
+      porOrigen,
+      primeraFecha: fechas[0],
+      ultimaFecha: fechas[fechas.length - 1],
+      totalDias: fechas.length,
+      saldosComputados: saldos,
+    };
   }
 
   async getCollectionCounts() {

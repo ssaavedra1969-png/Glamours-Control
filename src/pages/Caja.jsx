@@ -25,8 +25,7 @@ export default function Caja() {
   const [cierreForm, setCierreForm] = useState({ saldo_real_blanco: '', saldo_real_negro: '', observaciones: '' });
   const [stats, setStats] = useState({ saldo_blanco: 0, saldo_negro: 0, ingresos_hoy: 0, retiros_hoy: 0 });
   const [expandedDates, setExpandedDates] = useState({});
-  const [ventasDelDia, setVentasDelDia] = useState({});
-  const [ventasExpanded, setVentasExpanded] = useState({});
+
 
   useEffect(() => { loadData(); }, [dateFrom, dateTo]);
 
@@ -46,30 +45,36 @@ export default function Caja() {
     try {
       const t = today();
       const needTodaySeparately = t < dateFrom || t > dateTo;
-      const [data, saldos, ventas, hoyDataExtra] = await Promise.all([
+      const [data, saldos, hoyDataExtra] = await Promise.all([
         mockDB.getCaja(dateFrom || undefined, dateTo || undefined),
         mockDB.getEstadoSaldos(),
-        mockDB.getVentas(dateFrom || undefined, dateTo || undefined),
         needTodaySeparately ? mockDB.getCaja(t, t) : Promise.resolve(null),
       ]);
       setMovimientos(data);
       const hoyData = hoyDataExtra || data.filter((m) => m.fecha === t);
       const ingresos = hoyData.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
       const retiros = hoyData.filter((m) => m.codigo === 503).reduce((s, m) => s + m.monto, 0);
-      setStats({ saldo_blanco: saldos.Blanco || 0, saldo_negro: saldos.Negro || 0, ingresos_hoy: ingresos, retiros_hoy: retiros });
-      const ventasPorDia = {};
-      ventas.forEach((v) => {
-        if (v.medio_pago === 'Efectivo') {
-          if (!ventasPorDia[v.fecha]) ventasPorDia[v.fecha] = [];
-          ventasPorDia[v.fecha].push(v);
-        }
+
+      const cronologico = [...data].sort((a, b) => {
+        if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+        const order = { 500: 0, 502: 1, 501: 2, 503: 3 };
+        return (order[a.codigo] ?? 9) - (order[b.codigo] ?? 9);
       });
-      setVentasDelDia(ventasPorDia);
+      const s = { Blanco: 0, Negro: 0 };
+      for (const m of cronologico) {
+        const cat = m.categoria || 'Blanco';
+        if (m.codigo === 500) s[cat] = m.monto;
+        else if (m.codigo === 502) s[cat] += m.monto;
+        else if (m.codigo === 501) s[cat] -= m.monto;
+      }
+      setStats({ saldo_blanco: s.Blanco, saldo_negro: s.Negro, ingresos_hoy: ingresos, retiros_hoy: retiros });
 
       const SALDO_VERSION_MIN = SALDO_VERSION;
       if ((saldos._version || 0) < SALDO_VERSION_MIN) {
         const result = await mockDB.recalcularSaldosCompletos();
         toast.success(`Saldos recalculados (${result.total} registros)`, { duration: 4000 });
+        const freshData = await mockDB.getCaja(dateFrom || undefined, dateTo || undefined);
+        setMovimientos(freshData);
         setStats((prev) => ({ ...prev, saldo_blanco: result.blanco, saldo_negro: result.negro }));
       }
     } catch { toast.error('Error al cargar caja'); }
@@ -83,16 +88,32 @@ export default function Caja() {
   });
   const sortedDates = Object.keys(groupedByDate).sort((a, b) => b.localeCompare(a));
 
+  const runningBalanceByDate = (() => {
+    const allSorted = [...filtered].sort((a, b) => {
+      if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+      const order = { 500: 0, 502: 1, 501: 2, 503: 3 };
+      return (order[a.codigo] ?? 9) - (order[b.codigo] ?? 9);
+    });
+    const s = { Blanco: 0, Negro: 0 };
+    const result = {};
+    for (const m of allSorted) {
+      const cat = m.categoria || 'Blanco';
+      if (m.codigo === 500) s[cat] = m.monto;
+      else if (m.codigo === 502) s[cat] += m.monto;
+      else if (m.codigo === 501) s[cat] -= m.monto;
+      result[m.fecha] = { Blanco: s.Blanco, Negro: s.Negro, total: s.Blanco + s.Negro };
+    }
+    return result;
+  })();
+
   const toggleDate = (date) => setExpandedDates((prev) => ({ ...prev, [date]: !prev[date] }));
 
   const dayStats = (date) => {
     const items = groupedByDate[date] || [];
     const ingresos = items.filter((m) => m.codigo === 502).reduce((s, m) => s + m.monto, 0);
     const egresos = items.filter((m) => m.codigo === 501).reduce((s, m) => s + m.monto, 0);
-    // Mismo criterio que el motor de saldos v7: 500 y 503 no afectan, 501 resta, 502 suma
-    const multOf = (m) => (m.codigo === 500 || m.codigo === 503 ? 0 : m.codigo === 501 ? -1 : 1);
-    const blanco = items.filter((m) => m.categoria === 'Blanco').reduce((s, m) => s + m.monto * multOf(m), 0);
-    const negro = items.filter((m) => m.categoria === 'Negro').reduce((s, m) => s + m.monto * multOf(m), 0);
+    const blanco = items.filter((m) => m.categoria === 'Blanco' && m.codigo === 502 && m.origen === 'venta').reduce((s, m) => s + m.monto, 0);
+    const negro = items.filter((m) => m.categoria === 'Negro' && m.codigo === 502 && m.origen === 'venta').reduce((s, m) => s + m.monto, 0);
     return { count: items.length, ingresos, egresos, blanco, negro };
   };
 
@@ -415,23 +436,28 @@ export default function Caja() {
 
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {ds.ingresos > 0 && (
-                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '0.2rem 0.6rem', borderRadius: '8px' }}>
-                        +{formatCurrency(ds.ingresos)}
+                      <span style={{ fontSize: '0.7rem', fontWeight: '700', color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '0.2rem 0.6rem', borderRadius: '8px' }}>
+                        Ingresos: +{formatCurrency(ds.ingresos)}
                       </span>
                     )}
                     {ds.egresos > 0 && (
-                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '0.2rem 0.6rem', borderRadius: '8px' }}>
-                        -{formatCurrency(ds.egresos)}
+                      <span style={{ fontSize: '0.7rem', fontWeight: '700', color: '#ef4444', background: 'rgba(239,68,68,0.12)', padding: '0.2rem 0.6rem', borderRadius: '8px' }}>
+                        Egresos: -{formatCurrency(ds.egresos)}
                       </span>
                     )}
                     {ds.blanco !== 0 && (
                       <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#facc15', background: 'rgba(250,204,21,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
-                        B: {ds.blanco > 0 ? '+' : ''}{formatCurrency(ds.blanco)}
+                        Blanco: +{formatCurrency(ds.blanco)}
                       </span>
                     )}
                     {ds.negro !== 0 && (
                       <span style={{ fontSize: '0.7rem', fontWeight: '600', color: '#9ca3af', background: 'rgba(156,163,175,0.1)', padding: '0.2rem 0.5rem', borderRadius: '8px' }}>
-                        N: {ds.negro > 0 ? '+' : ''}{formatCurrency(ds.negro)}
+                        Negro: +{formatCurrency(ds.negro)}
+                      </span>
+                    )}
+                    {runningBalanceByDate[date] && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#d4af37', background: 'rgba(212,175,55,0.12)', padding: '0.2rem 0.6rem', borderRadius: '8px' }}>
+                        Caja: {formatCurrency(runningBalanceByDate[date].total)}
                       </span>
                     )}
                   </div>
@@ -461,12 +487,6 @@ export default function Caja() {
                         return (order[a.codigo] ?? 9) - (order[b.codigo] ?? 9);
                       });
                       const retiros = items.filter((m) => m.codigo === 503);
-                      const ventasEfectivo = ventasDelDia[date] || [];
-                      const blancas = ventasEfectivo.filter((v) => v.categoria === 'Blanco');
-                      const negras = ventasEfectivo.filter((v) => v.categoria === 'Negro');
-                      const totalVentasEfectivo = ventasEfectivo.reduce((s, v) => s + v.monto, 0);
-                      const totalBlancas = blancas.reduce((s, v) => s + v.monto, 0);
-                      const totalNegras = negras.reduce((s, v) => s + v.monto, 0);
                       return (
                         <>
                           {/* Movimientos regulares */}
@@ -504,44 +524,11 @@ export default function Caja() {
                                     <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#d4af37', fontWeight: '700', fontSize: '0.82rem' }}>{formatCurrency(m.saldo_nuevo)}</td>
                                     <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>
                                       <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
-                                        {m.codigo === 502 && ventasEfectivo.length > 0 && (
-                                          <button className="btn-icon" onClick={() => setVentasExpanded((p) => ({ ...p, [`${date}_502`]: !p[`${date}_502`] }))} title="Ver ventas en efectivo" style={{ color: '#10b981', background: 'rgba(16,185,129,0.1)', borderRadius: '6px', fontSize: '0.6rem', padding: '0.2rem 0.5rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                            {ventasExpanded[`${date}_502`] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                            {ventasEfectivo.length} venta{ventasEfectivo.length > 1 ? 's' : ''}
-                                          </button>
-                                        )}
                                         <button className="btn-icon" onClick={() => openEdit(m)} title="Editar"><Edit3 size={14} /></button>
                                         <button className="btn-icon" onClick={() => handleDelete(m.id)} title="Eliminar"><Trash2 size={14} /></button>
                                       </div>
                                     </td>
                                   </tr>
-                                  {/* Desplegable ventas en efectivo */}
-                                  {m.codigo === 502 && ventasEfectivo.length > 0 && ventasExpanded[`${date}_502`] && (
-                                    <tr>
-                                      <td colSpan="6" style={{ padding: '0' }}>
-                                        <div style={{
-                                          margin: '0.25rem 0 0.5rem 1rem',
-                                          background: 'linear-gradient(135deg, #0c1a3a 0%, #0f2340 100%)',
-                                          border: '1px solid rgba(59,130,246,0.2)',
-                                          borderRadius: '8px',
-                                          padding: '0.6rem 0.75rem',
-                                        }}>
-                                          {blancas.length > 0 && (
-                                            <div style={{ fontSize: '0.72rem', color: '#e5e7eb', padding: '0.2rem 0', display: 'flex', justifyContent: 'space-between', borderBottom: negras.length > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-                                              <span><span style={{ color: '#facc15', fontWeight: '600' }}>Blanco</span> ({blancas.length} venta{blancas.length > 1 ? 's' : ''})</span>
-                                              <span style={{ color: '#10b981', fontWeight: '700' }}>+{formatCurrency(totalBlancas)}</span>
-                                            </div>
-                                          )}
-                                          {negras.length > 0 && (
-                                            <div style={{ fontSize: '0.72rem', color: '#e5e7eb', padding: '0.2rem 0', display: 'flex', justifyContent: 'space-between' }}>
-                                              <span><span style={{ color: '#9ca3af', fontWeight: '600' }}>Negro</span> ({negras.length} venta{negras.length > 1 ? 's' : ''})</span>
-                                              <span style={{ color: '#10b981', fontWeight: '700' }}>+{formatCurrency(totalNegras)}</span>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  )}
                                 </Fragment>
                               ))}
                             </tbody>
