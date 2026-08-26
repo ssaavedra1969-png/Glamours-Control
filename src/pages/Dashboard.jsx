@@ -70,7 +70,7 @@ export default function Dashboard() {
     const s = { Blanco: 0, Negro: 0 };
     for (const m of sorted) {
       const cat = m.categoria || 'Blanco';
-      if (m.codigo === 500) s[cat] = m.monto;
+      if (m.codigo === 500) { s.Blanco = m.monto; s.Negro = 0; }
       else if (m.codigo === 502) s[cat] += m.monto;
       else if (m.codigo === 501) s[cat] -= m.monto;
     }

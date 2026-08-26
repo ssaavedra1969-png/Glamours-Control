@@ -63,7 +63,7 @@ export default function Caja() {
       const s = { Blanco: 0, Negro: 0 };
       for (const m of cronologico) {
         const cat = m.categoria || 'Blanco';
-        if (m.codigo === 500) s[cat] = m.monto;
+        if (m.codigo === 500) { s.Blanco = m.monto; s.Negro = 0; }
         else if (m.codigo === 502) s[cat] += m.monto;
         else if (m.codigo === 501) s[cat] -= m.monto;
       }
@@ -98,7 +98,7 @@ export default function Caja() {
     const result = {};
     for (const m of allSorted) {
       const cat = m.categoria || 'Blanco';
-      if (m.codigo === 500) s[cat] = m.monto;
+      if (m.codigo === 500) { s.Blanco = m.monto; s.Negro = 0; }
       else if (m.codigo === 502) s[cat] += m.monto;
       else if (m.codigo === 501) s[cat] -= m.monto;
       result[m.fecha] = { Blanco: s.Blanco, Negro: s.Negro, total: s.Blanco + s.Negro };
