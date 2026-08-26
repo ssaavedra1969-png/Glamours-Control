@@ -719,6 +719,27 @@ class FirestoreDB {
     return data;
   }
 
+  async deleteSingleCollection(name) {
+    const snap = await _getDocs(col(name));
+    let batch = _writeBatch(db);
+    let count = 0;
+    for (const d of snap.docs) {
+      batch.delete(d.ref);
+      count++;
+      if (count % 500 === 0) {
+        await batch.commit();
+        batch = _writeBatch(db);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+    if (count % 500 !== 0) await batch.commit();
+    return count;
+  }
+
+  async resetCajaSaldos() {
+    await this.setEstadoSaldos({ Blanco: 0, Negro: 0, _version: SALDO_VERSION });
+  }
+
   async deleteAllCollections() {
     const collections = ['caja', 'ventas', 'cierres', 'conciliaciones', 'auditoria', 'configuracion', 'users'];
     for (const name of collections) {

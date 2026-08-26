@@ -471,6 +471,54 @@ export default function Configuracion() {
           >
             <Trash2 size={16} /> Eliminar Todo y Descargar Backup
           </button>
+
+          <div style={{ borderTop: '1px solid rgba(239,68,68,0.15)', margin: '1rem 0' }} />
+
+          <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginBottom: '0.75rem' }}>
+            Elimina solo el Libro de Caja y reinicia los saldos. Ventas, usuarios y demas se conservan. Despues podes recargar el Excel desde Carga Masiva.
+          </p>
+          <button
+            className="btn btn-danger"
+            disabled={!isAdmin}
+            onClick={async () => {
+              const ok = window.confirm(
+                'REINICIAR LIBRO DE CAJA\n\n' +
+                'Esto va a:\n' +
+                '  1. Descargar un backup de SOLO la caja\n' +
+                '  2. Eliminar TODOS los movimientos de caja\n' +
+                '  3. Reiniciar los saldos a cero\n\n' +
+                'Despues ir a "Carga Masiva" y recargar el Excel.\n\n' +
+                'Continuar?'
+              );
+              if (!ok) return;
+              try {
+                toast.loading('Descargando backup de caja...');
+                const backup = await mockDB.exportAllData();
+                const cajaBackup = { caja: backup.caja || [] };
+                toast.loading('Eliminando movimientos de caja...');
+                await mockDB.deleteSingleCollection('caja');
+                await mockDB.resetCajaSaldos();
+                const blob = new Blob([JSON.stringify(cajaBackup, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'CAJA_BACKUP_' + new Date().toISOString().slice(0, 10) + '.json';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                mockDB.addAuditLog(user.email, 'Reinicio Libro de Caja', 'Configuracion', `${cajaBackup.caja.length} movimientos eliminados, saldos reiniciados`);
+                toast.dismiss();
+                toast.success(`Caja eliminada (${cajaBackup.caja.length} movs). Saldos reiniciados. Ahora recarga el Excel.`);
+                loadData();
+              } catch (err) {
+                toast.dismiss();
+                toast.error('Error: ' + err.message);
+              }
+            }}
+          >
+            <Trash2 size={16} /> Reiniciar Solo Libro de Caja
+          </button>
         </div>
       </section>
     </div>
