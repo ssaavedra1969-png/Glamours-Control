@@ -35,13 +35,28 @@ export default function CierresCaja() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [cierresData, cajaData, saldos] = await Promise.all([
+      const [cierresData, cajaData, allCaja] = await Promise.all([
         mockDB.getCierres(dateFrom || undefined, dateTo || undefined),
         mockDB.getCaja(dateFrom || undefined, dateTo || undefined),
-        mockDB.getEstadoSaldos(),
+        mockDB.getCaja(),
       ]);
 
-      setLiveSaldos(saldos);
+      const saldosCalc = (() => {
+        const sorted = [...allCaja].sort((a, b) => {
+          if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
+          const o = { 500: 0, 502: 1, 501: 2, 503: 3 };
+          return (o[a.codigo] ?? 9) - (o[b.codigo] ?? 9);
+        });
+        const s = { Blanco: 0, Negro: 0 };
+        for (const m of sorted) {
+          const cat = m.categoria || 'Blanco';
+          if (m.codigo === 500) s[cat] = m.monto;
+          else if (m.codigo === 502) s[cat] += m.monto;
+          else if (m.codigo === 501) s[cat] -= m.monto;
+        }
+        return s;
+      })();
+      setLiveSaldos(saldosCalc);
 
       // Agrupar retiros y cierres por fecha
       const combined = {};
