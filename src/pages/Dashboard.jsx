@@ -21,6 +21,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [ventas, setVentas] = useState([]);
   const [caja, setCaja] = useState([]);
+  const [estado, setEstado] = useState({ Blanco: 0, Negro: 0 });
   const [showCajaDetail, setShowCajaDetail] = useState(false);
 
   useEffect(() => { loadData(); }, []);
@@ -31,12 +32,14 @@ export default function Dashboard() {
       const prevMonthStart = format(startOfMonth(subMonths(new Date(), 1)), 'yyyy-MM-dd');
       const curMonthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd');
       const ayer = format(subDays(new Date(), 1), 'yyyy-MM-dd');
-      const [v, c] = await Promise.all([
+      const [v, c, estado] = await Promise.all([
         mockDB.getVentas(prevMonthStart, curMonthEnd).catch(() => []),
         mockDB.getCaja(ayer).catch(() => []),
+        mockDB.getEstadoSaldos().catch(() => ({ Blanco: 0, Negro: 0 })),
       ]);
       setVentas(v);
       setCaja(c);
+      setEstado(estado);
     } catch { toast.error('Error al cargar datos'); }
     finally { setLoading(false); }
   };
@@ -62,23 +65,8 @@ export default function Dashboard() {
   const totalCur = TYPES.reduce((s, t) => s + cur.totales[t], 0);
   const totalPrev = TYPES.reduce((s, t) => s + prev.totales[t], 0);
 
-  const saldoCalc = (() => {
-    const sorted = [...caja].sort((a, b) => {
-      if (a.fecha !== b.fecha) return a.fecha.localeCompare(b.fecha);
-      const o = { 500: 0, 502: 1, 501: 2, 503: 3 };
-      return (o[a.codigo] ?? 9) - (o[b.codigo] ?? 9);
-    });
-    const s = { Blanco: 0, Negro: 0 };
-    for (const m of sorted) {
-      const cat = m.categoria || 'Blanco';
-      if (m.codigo === 500) s[cat] = m.monto;
-      else if (m.codigo === 502) s[cat] += m.monto;
-      else if (m.codigo === 501) s[cat] -= m.monto;
-    }
-    return s;
-  })();
-  const saldoBlanco = saldoCalc.Blanco;
-  const saldoNegro = saldoCalc.Negro;
+  const saldoBlanco = estado.Blanco || 0;
+  const saldoNegro = estado.Negro || 0;
   const saldoFisico = saldoBlanco + saldoNegro;
 
   if (loading) return (

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings, Users, UserPlus, Database, Upload, Download, Trash2, Info, Activity } from 'lucide-react';
+import { Settings, Users, UserPlus, Database, Upload, Download, Trash2, Info, Activity, Wrench } from 'lucide-react';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut as fbSignOut, connectAuthEmulator } from 'firebase/auth';
 import { firebaseConfig } from '../config/firebase';
 import mockDB, { SALDO_VERSION } from '../services/firestoreDB';
 import { getUsageHoy, SPARK_LIMITS } from '../utils/firebaseUsage';
+import { formatCurrency } from '../utils/formatCurrency';
 import { useAuth } from '../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -14,6 +15,8 @@ export default function Configuracion() {
   const [users, setUsers] = useState([]);
   const [counts, setCounts] = useState(null);
   const [nuevoUsuario, setNuevoUsuario] = useState({ email: '', password: '', nombre: '', rol: 'operador' });
+  const [migrando, setMigrando] = useState(false);
+  const [diag, setDiag] = useState(null);
   const fileInputRef = useRef(null);
   const esEmulador = import.meta.env.VITE_USE_EMULATOR === 'true';
 
@@ -330,6 +333,96 @@ export default function Configuracion() {
           </div>
         </div>
       </section>
+
+      {/* ============================================ */}
+      {/* SECCION: DIAGNOSTICO CAJA                   */}
+      {/* ============================================ */}
+      {isAdmin && (
+        <section>
+          <div style={{
+            background: 'rgba(59,130,246,0.04)',
+            border: '1px solid rgba(59,130,246,0.25)',
+            borderRadius: '14px', padding: '1.5rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <Info size={18} color="#3b82f6" />
+              <div style={{ fontWeight: '800', fontSize: '0.95rem', color: '#3b82f6' }}>Diagnostico de Caja</div>
+            </div>
+            {diag ? (
+              <div style={{ fontSize: '0.8rem', color: '#e5e7eb', lineHeight: '1.8' }}>
+                <div>Total documentos: <strong>{diag.total}</strong></div>
+                <div>Dias: <strong>{diag.totalDias}</strong> ({diag.primeraFecha} → {diag.ultimaFecha})</div>
+                <div>Por codigo: {Object.entries(diag.porCodigo).map(([k, v]) => `${k}:${v}`).join(' | ')}</div>
+                <div>Por origen: {Object.entries(diag.porOrigen).map(([k, v]) => `${k}:${v}`).join(' | ')}</div>
+                <div>Saldos computados: Blanco={formatCurrency(diag.saldosComputados.Blanco)} Negro={formatCurrency(diag.saldosComputados.Negro)} Total={formatCurrency(diag.saldosComputados.Blanco + diag.saldosComputados.Negro)}</div>
+              </div>
+            ) : (
+              <button className="btn btn-outline" onClick={async () => {
+                toast.loading('Diagnosticando...');
+                const d = await mockDB.diagnosticarCaja();
+                toast.dismiss();
+                setDiag(d);
+                toast.success('Diagnostico completado');
+              }}>
+                <Info size={16} /> Ejecutar Diagnostico
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ============================================ */}
+      {/* SECCION: MIGRACION VENTAS → CAJA            */}
+      {/* ============================================ */}
+      {isAdmin && (
+        <section>
+          <div style={{
+            background: 'rgba(212,175,55,0.04)',
+            border: '1px solid rgba(212,175,55,0.25)',
+            borderRadius: '14px', padding: '1.5rem',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <Wrench size={18} color="#d4af37" />
+              <div style={{ fontWeight: '800', fontSize: '0.95rem', color: '#d4af37' }}>Migracion: Ventas → Movimientos de Caja</div>
+            </div>
+            <p style={{ color: '#9ca3af', fontSize: '0.8rem', marginBottom: '1rem' }}>
+              Limpia los movimientos 502 generados previamente y los recalcula desde cero contra TODOS los 502 existentes (incluyendo los del Excel original). Corrige saldos duplicados o faltantes.
+            </p>
+            <button
+              className="btn btn-accent"
+              disabled={migrando}
+              onClick={async () => {
+                if (!window.confirm('Paso 1: Elimina todos los movimientos 502 de origen "venta".\nPaso 2: Analiza ventas en efectivo contra TODOS los 502 de caja.\nPaso 3: Solo crea los que realmente faltan.\nPaso 4: Recalcula saldos completos.\n\nContinuar?')) return;
+                setMigrando(true);
+                try {
+                  toast.loading('Limpiando y recalculando...');
+                  const result = await mockDB.migrarVentasCaja((p) => {
+                    toast.loading(`Creando movimientos... ${p.created}/${p.total}`);
+                  });
+                  toast.dismiss();
+                  if (result.created === 0 && result.deleted === 0) {
+                    toast.success('Todo OK: no hay movimientos 502 faltantes ni duplicados');
+                  } else {
+                    const parts = [];
+                    if (result.deleted > 0) parts.push(`${result.deleted} eliminados`);
+                    if (result.created > 0) parts.push(`${result.created} creados`);
+                    toast.success(`Migracion completa: ${parts.join(', ')}. Saldos recalculados.`);
+                    mockDB.addAuditLog(user.email, 'Migracion ventas→caja', 'Configuracion', `${result.created} movimientos creados`);
+                  }
+                  loadData();
+                } catch (err) {
+                  toast.dismiss();
+                  toast.error('Error en migracion: ' + err.message);
+                } finally {
+                  setMigrando(false);
+                }
+              }}
+            >
+              <Wrench size={16} /> {migrando ? 'Migrando...' : 'Crear movimientos 502 faltantes'}
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* ============================================ */}
       {/* SECCION 6: ZONA DE PELIGRO                 */}
