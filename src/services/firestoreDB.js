@@ -100,10 +100,14 @@ async function getAllRaw(collectionName, force = false) {
   return out;
 }
 
-function aplicarMovimiento(saldos, cat, codigo, monto) {
+function aplicarMovimiento(saldos, cat, codigo, monto, resetBoth = false) {
   const anterior = saldos[cat];
   let nuevo;
   if (codigo === 500) {
+    if (resetBoth) {
+      saldos.Blanco = 0;
+      saldos.Negro = 0;
+    }
     nuevo = monto;
   } else {
     // 501 resta, 502 suma, 503 es informativo (mult 0)
@@ -132,7 +136,7 @@ function computeSaldos(list) {
   const saldos = { Blanco: 0, Negro: 0 };
   for (const m of sorted) {
     const cat = m.categoria || 'Blanco';
-    aplicarMovimiento(saldos, cat, m.codigo, m.monto);
+    aplicarMovimiento(saldos, cat, m.codigo, m.monto, true);
   }
   return saldos;
 }
@@ -218,7 +222,7 @@ class FirestoreDB {
     const newDocs = [];
     for (const item of newSorted) {
       const cat = item.categoria || 'Blanco';
-      const { anterior, nuevo } = aplicarMovimiento(saldos, cat, item.codigo, item.monto);
+      const { anterior, nuevo } = aplicarMovimiento(saldos, cat, item.codigo, item.monto, true);
       newDocs.push({
         fecha: item.fecha, tipo: item.tipo, codigo: item.codigo,
         categoria: cat, descripcion: item.descripcion, monto: item.monto,
@@ -295,7 +299,7 @@ class FirestoreDB {
     let count = 0;
     for (const m of all) {
       const cat = m.categoria || 'Blanco';
-      const { anterior, nuevo } = aplicarMovimiento(saldos, cat, m.codigo, m.monto);
+      const { anterior, nuevo } = aplicarMovimiento(saldos, cat, m.codigo, m.monto, !onlyCategoria);
       // Solo escribimos si el saldo realmente cambio (evita reescribir toda la coleccion)
       if (m.saldo_anterior !== anterior || m.saldo_nuevo !== nuevo) {
         batch.update(docRef('caja', m.id), { saldo_anterior: anterior, saldo_nuevo: nuevo });
