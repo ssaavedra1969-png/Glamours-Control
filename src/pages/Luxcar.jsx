@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Car, Cake, Baby, Gift, Upload, Users, CalendarDays, RefreshCw } from 'lucide-react';
+import { Car, Cake, Baby, Gift, Upload, Users, CalendarDays, RefreshCw, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import firestoreDB from '../services/firestoreDB';
 import { useAuth } from '../contexts/AuthContext';
@@ -188,6 +188,29 @@ export default function Luxcar() {
         }}>
           <RefreshCw size={15} />
         </button>
+      </div>
+
+      {/* Instructivo de carga */}
+      <div style={{
+        borderLeft: '3px solid #d4af37',
+        background: 'rgba(212,175,55,0.06)',
+        border: '1px solid rgba(212,175,55,0.2)',
+        borderRadius: 12, padding: '0.9rem 1.1rem', gap: '0.7rem',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+          <Info size={15} color="#d4af37" />
+          <span style={{ fontSize: '0.82rem', fontWeight: '800', color: '#d4af37', letterSpacing: '0.02em' }}>
+            ¿CÓMO CARGAR EL EXCEL?
+          </span>
+        </div>
+        <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#9ca3af', fontSize: '0.78rem', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+          <li>El archivo debe tener 3 hojas con estos nombres: <b style={{ color: '#d1d5db' }}>CUMPLES</b>, <b style={{ color: '#d1d5db' }}>DIA DEL ÑINO</b> y <b style={{ color: '#d1d5db' }}>NAVIDAD</b>.</li>
+          <li><b style={{ color: '#d1d5db' }}>CUMPLES:</b> columnas <i>Cumpleaños</i> · <i>Fecha Cumple</i> (dd/mm) · <i>Estado</i> (1 = Activo, 2 = A confirmar).</li>
+          <li><b style={{ color: '#d1d5db' }}>DIA DEL ÑINO</b> y <b style={{ color: '#d1d5db' }}>NAVIDAD:</b> columnas <i>Nombre</i> · <i>Fecha</i>.</li>
+          <li>La fecha debe quedar como <b style={{ color: '#d1d5db' }}>TEXTO</b> en Excel (Formato de celda → Texto), si no puede correr un día.</li>
+          <li><b style={{ color: '#f87171' }}>IMPORTANTE:</b> al cargar se <b style={{ color: '#f87171' }}>REEMPLAZA</b> todo lo anterior: el Excel debe incluir todas las personas que quieras conservar + las nuevas.</li>
+          <li>Filas sin nombre o sin fecha válida se ignoran; columnas de más (teléfono, dirección, etc.) no se guardan.</li>
+        </ul>
       </div>
 
       {/* Contenido */}
