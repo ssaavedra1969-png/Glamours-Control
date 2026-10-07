@@ -1,0 +1,2059 @@
+{
+  "documents": [
+    {
+      "name": "projects/glamours-control/databases/(default)/documents/luxcar_personas/cumple",
+      "fields": {
+        "actualizado": {
+          "stringValue": "2026-08-24T22:12:09.583Z"
+        },
+        "cantidad": {
+          "integerValue": "87"
+        },
+        "personas": {
+          "arrayValue": {
+            "values": [
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "18"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    },
+                    "nombre": {
+                      "stringValue": "Argentino"
+                    },
+                    "mes": {
+                      "integerValue": "0"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "18"
+                    },
+                    "nombre": {
+                      "stringValue": "Gustavo Tilli"
+                    },
+                    "mes": {
+                      "integerValue": "0"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Nieto Lolo"
+                    },
+                    "mes": {
+                      "integerValue": "0"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "21"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "0"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Patricia Psicologa"
+                    },
+                    "dia": {
+                      "integerValue": "26"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "0"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Agustin Saco"
+                    },
+                    "dia": {
+                      "integerValue": "27"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Dra Patricia Agazzi"
+                    },
+                    "dia": {
+                      "integerValue": "31"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "0"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Contador Casalis"
+                    },
+                    "dia": {
+                      "integerValue": "7"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "9"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Daniel Bolf"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Diego Morrone"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "9"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "11"
+                    },
+                    "nombre": {
+                      "stringValue": "Emiliano"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "15"
+                    },
+                    "nombre": {
+                      "stringValue": "Adrian Manco"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "17"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Gaston Garay"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "2"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Juli"
+                    },
+                    "dia": {
+                      "integerValue": "17"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "22"
+                    },
+                    "nombre": {
+                      "stringValue": "Nacho"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Felipe"
+                    },
+                    "dia": {
+                      "integerValue": "23"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "25"
+                    },
+                    "nombre": {
+                      "stringValue": "Vicente Fiore"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "26"
+                    },
+                    "nombre": {
+                      "stringValue": "Ernesto de CUSPIDE"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Martin Canch"
+                    },
+                    "dia": {
+                      "integerValue": "26"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Octavio"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "26"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Lalo Galati"
+                    },
+                    "mes": {
+                      "integerValue": "2"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "5"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Japo ( Adrián)"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "18"
+                    },
+                    "mes": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "2"
+                    },
+                    "dia": {
+                      "integerValue": "21"
+                    },
+                    "nombre": {
+                      "stringValue": "Sergio Pinheiro"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Santino"
+                    },
+                    "dia": {
+                      "integerValue": "26"
+                    },
+                    "mes": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "2"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "29"
+                    },
+                    "nombre": {
+                      "stringValue": "Teresita (Avisar Fabian)"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "3"
+                    },
+                    "nombre": {
+                      "stringValue": "Ely Luxcar"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "5"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "3"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    },
+                    "dia": {
+                      "integerValue": "14"
+                    },
+                    "nombre": {
+                      "stringValue": "Pablo Morrone"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "19"
+                    },
+                    "mes": {
+                      "integerValue": "3"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Monica-Bar Luxcar"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "3"
+                    },
+                    "dia": {
+                      "integerValue": "24"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Marianito"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "3"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "24"
+                    },
+                    "nombre": {
+                      "stringValue": "Veronica Sanchez"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "3"
+                    },
+                    "dia": {
+                      "integerValue": "27"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Gisela Pavon"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Dario Fiore"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "4"
+                    },
+                    "dia": {
+                      "integerValue": "3"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Ariel Mittica"
+                    },
+                    "mes": {
+                      "integerValue": "4"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "9"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "4"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Diego Agazzi"
+                    },
+                    "dia": {
+                      "integerValue": "13"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Laura Starico"
+                    },
+                    "mes": {
+                      "integerValue": "4"
+                    },
+                    "dia": {
+                      "integerValue": "21"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "4"
+                    },
+                    "nombre": {
+                      "stringValue": "Montaldo"
+                    },
+                    "dia": {
+                      "integerValue": "21"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "2"
+                    },
+                    "dia": {
+                      "integerValue": "23"
+                    },
+                    "nombre": {
+                      "stringValue": "Patri Morrone"
+                    },
+                    "mes": {
+                      "integerValue": "4"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "5"
+                    },
+                    "nombre": {
+                      "stringValue": "Dr Ribo"
+                    },
+                    "dia": {
+                      "integerValue": "2"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "7"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Dante Fiore"
+                    },
+                    "mes": {
+                      "integerValue": "5"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "15"
+                    },
+                    "nombre": {
+                      "stringValue": "Coco"
+                    },
+                    "mes": {
+                      "integerValue": "5"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "17"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Laly"
+                    },
+                    "mes": {
+                      "integerValue": "5"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "20"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Sofia Agazzi"
+                    },
+                    "mes": {
+                      "integerValue": "5"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "5"
+                    },
+                    "nombre": {
+                      "stringValue": "Pancho"
+                    },
+                    "dia": {
+                      "integerValue": "26"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "5"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Dario Scarnato"
+                    },
+                    "dia": {
+                      "integerValue": "28"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "5"
+                    },
+                    "nombre": {
+                      "stringValue": "Gabriel Lo Duca"
+                    },
+                    "dia": {
+                      "integerValue": "29"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "3"
+                    },
+                    "nombre": {
+                      "stringValue": "Juampi"
+                    },
+                    "mes": {
+                      "integerValue": "6"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "6"
+                    },
+                    "nombre": {
+                      "stringValue": "Moni"
+                    },
+                    "dia": {
+                      "integerValue": "5"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "6"
+                    },
+                    "nombre": {
+                      "stringValue": "Candela"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "6"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "9"
+                    },
+                    "nombre": {
+                      "stringValue": "Diego Vega"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "6"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Gallego"
+                    },
+                    "mes": {
+                      "integerValue": "6"
+                    },
+                    "dia": {
+                      "integerValue": "28"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "7"
+                    },
+                    "nombre": {
+                      "stringValue": "Javier Morrone"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "7"
+                    },
+                    "dia": {
+                      "integerValue": "2"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Ricardo Guazzardi"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "2"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "7"
+                    },
+                    "nombre": {
+                      "stringValue": "Sole Higuain"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "5"
+                    },
+                    "nombre": {
+                      "stringValue": "Lourdes"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "7"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "2"
+                    },
+                    "mes": {
+                      "integerValue": "7"
+                    },
+                    "nombre": {
+                      "stringValue": "Mauri"
+                    },
+                    "dia": {
+                      "integerValue": "8"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Natalin"
+                    },
+                    "dia": {
+                      "integerValue": "12"
+                    },
+                    "mes": {
+                      "integerValue": "7"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "7"
+                    },
+                    "nombre": {
+                      "stringValue": "Ana Altamiranda"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "17"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "7"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Antonio"
+                    },
+                    "dia": {
+                      "integerValue": "17"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "24"
+                    },
+                    "nombre": {
+                      "stringValue": "Enzo Greco"
+                    },
+                    "mes": {
+                      "integerValue": "7"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "31"
+                    },
+                    "nombre": {
+                      "stringValue": "Alejandra"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "7"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "7"
+                    },
+                    "dia": {
+                      "integerValue": "31"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Felipe Mingrone"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Ana del campo"
+                    },
+                    "mes": {
+                      "integerValue": "8"
+                    },
+                    "dia": {
+                      "integerValue": "12"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "8"
+                    },
+                    "nombre": {
+                      "stringValue": "Gerardo costabel"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "23"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "9"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Marcela Pedalino"
+                    },
+                    "dia": {
+                      "integerValue": "4"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "6"
+                    },
+                    "nombre": {
+                      "stringValue": "Mateo"
+                    },
+                    "mes": {
+                      "integerValue": "9"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "9"
+                    },
+                    "nombre": {
+                      "stringValue": "Gisela Novia Pablito"
+                    },
+                    "dia": {
+                      "integerValue": "12"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "21"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Natalia"
+                    },
+                    "mes": {
+                      "integerValue": "9"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "22"
+                    },
+                    "nombre": {
+                      "stringValue": "Vicky"
+                    },
+                    "mes": {
+                      "integerValue": "9"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "9"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Hernan Morrone"
+                    },
+                    "dia": {
+                      "integerValue": "24"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "11"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Enrique"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "12"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "nombre": {
+                      "stringValue": "Lazarte"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "nombre": {
+                      "stringValue": "Juliana Rumi"
+                    },
+                    "dia": {
+                      "integerValue": "13"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "16"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "nombre": {
+                      "stringValue": "Fer Carretoni"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "16"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "nombre": {
+                      "stringValue": "Ale Rossi"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "dia": {
+                      "integerValue": "18"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Sergio Oviedo"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "21"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Nico Vega"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "nombre": {
+                      "stringValue": "Yolanda"
+                    },
+                    "dia": {
+                      "integerValue": "22"
+                    },
+                    "estado": {
+                      "integerValue": "2"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "23"
+                    },
+                    "nombre": {
+                      "stringValue": "Roca Gus (Cuñado)"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "28"
+                    },
+                    "nombre": {
+                      "stringValue": "Dante"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "28"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "nombre": {
+                      "stringValue": "Tio Mario"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Gianni Arquitecto"
+                    },
+                    "mes": {
+                      "integerValue": "10"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "dia": {
+                      "integerValue": "29"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "4"
+                    },
+                    "mes": {
+                      "integerValue": "11"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Nico M.Morrone"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "11"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Julieta"
+                    },
+                    "dia": {
+                      "integerValue": "10"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "19"
+                    },
+                    "nombre": {
+                      "stringValue": "Guille Luxcar moreno"
+                    },
+                    "mes": {
+                      "integerValue": "11"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Leandro Ruggiero"
+                    },
+                    "dia": {
+                      "integerValue": "19"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "11"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "20"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "mes": {
+                      "integerValue": "11"
+                    },
+                    "nombre": {
+                      "stringValue": "Martin Alcorta"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "dia": {
+                      "integerValue": "20"
+                    },
+                    "nombre": {
+                      "stringValue": "Peretto"
+                    },
+                    "mes": {
+                      "integerValue": "11"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "mes": {
+                      "integerValue": "2"
+                    },
+                    "dia": {
+                      "integerValue": "3"
+                    },
+                    "estado": {
+                      "integerValue": "1"
+                    },
+                    "nombre": {
+                      "stringValue": "Pedrito"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "createTime": "2026-08-24T22:12:20.867615Z",
+      "updateTime": "2026-08-24T22:12:20.867615Z"
+    },
+    {
+      "name": "projects/glamours-control/databases/(default)/documents/luxcar_personas/navidad",
+      "fields": {
+        "cantidad": {
+          "integerValue": "19"
+        },
+        "personas": {
+          "arrayValue": {
+            "values": [
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    },
+                    "nombre": {
+                      "stringValue": "Lolito"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Felipe"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Olivia"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    },
+                    "nombre": {
+                      "stringValue": "Pablo"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    },
+                    "nombre": {
+                      "stringValue": "Juli"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Ale"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Naty"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Noel"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Joaquin"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Nacho"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    },
+                    "nombre": {
+                      "stringValue": "Juampi"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Darío"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Dante"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    },
+                    "nombre": {
+                      "stringValue": "Vicky"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Mateo"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Eli"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Ale Rossi"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Norma Costabel"
+                    },
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Navidad"
+                    },
+                    "nombre": {
+                      "stringValue": "Pedrito"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "actualizado": {
+          "stringValue": "2026-08-24T22:12:12.536Z"
+        }
+      },
+      "createTime": "2026-08-24T22:12:21.687052Z",
+      "updateTime": "2026-08-24T22:12:21.687052Z"
+    },
+    {
+      "name": "projects/glamours-control/databases/(default)/documents/luxcar_personas/nino",
+      "fields": {
+        "actualizado": {
+          "stringValue": "2026-08-24T22:12:12.067Z"
+        },
+        "cantidad": {
+          "integerValue": "17"
+        },
+        "personas": {
+          "arrayValue": {
+            "values": [
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Lolito"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Felipe"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Olivia"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Pablo"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Juli"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Ale"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Naty"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Noel"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Joaquin"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Nacho"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Juampi"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    },
+                    "nombre": {
+                      "stringValue": "Darío"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Dante"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Vicky"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Mateo"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Eli"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              },
+              {
+                "mapValue": {
+                  "fields": {
+                    "nombre": {
+                      "stringValue": "Pedrito"
+                    },
+                    "fecha": {
+                      "stringValue": "Dia del Niño"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "createTime": "2026-08-24T22:12:21.339483Z",
+      "updateTime": "2026-08-24T22:12:21.339483Z"
+    }
+  ]
+}
