@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
 import {
   LayoutDashboard, Wallet, ShoppingCart, Upload, FileBarChart,
-  Settings, Lock, ShieldCheck, Menu, X, Car
+  Settings, Lock, ShieldCheck, Menu, X, Car, Gift
 } from 'lucide-react';
 
 const NAV_ITEMS = [
@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { path: '/ventas', label: 'Libro de Ventas', icon: ShoppingCart },
   { path: '/carga', label: 'Carga Masiva', icon: Upload },
   { path: '/reportes', label: 'Reportes', icon: FileBarChart },
-  { path: '/luxcar', label: 'Luxcar', icon: Car },
+  { path: '/luxcar', label: 'Regalos Empresariales', icon: Gift },
   { path: '/cierres', label: 'Cierres de Caja', icon: Lock },
   { path: '/configuracion', label: 'Configuracion', icon: Settings },
   { path: '/auditoria', label: 'Auditoria', icon: ShieldCheck },
@@ -25,7 +25,7 @@ const SECTION_TITLES = {
   '/ventas': 'Libro de Ventas',
   '/carga': 'Carga Masiva',
   '/reportes': 'Reportes y Estadisticas',
-  '/luxcar': 'Luxcar — Cumpleaños y Eventos',
+  '/luxcar': 'Regalos Empresariales - Cumpleaños y Eventos',
   '/cierres': 'Cierres de Caja',
   '/configuracion': 'Configuracion del Sistema',
   '/auditoria': 'Registro de Auditoria',

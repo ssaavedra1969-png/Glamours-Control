@@ -139,6 +139,38 @@ export function parseLuxcarWorkbook(arrayBuffer) {
   };
 }
 
+// ---- Backup obligatorio (formato original: 3 hojas) ----
+export function nombreBackupLuxcar(fecha = new Date()) {
+  const dd = String(fecha.getDate()).padStart(2, '0');
+  const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+  const aa = String(fecha.getFullYear()).slice(-2);
+  return `Cumples_${dd}${mm}${aa}`;
+}
+
+// data: { cumple:[{nombre,dia,mes,estado}], nino:[{nombre,fecha}], navidad:[{nombre,fecha}] }
+export function descargarBackupLuxcar(data) {
+  const wb = XLSX.utils.book_new();
+
+  const hojaCumples = XLSX.utils.json_to_sheet(
+    (data.cumple || []).map((p) => ({
+      'Cumpleaños': p.nombre,
+      'Fecha Cumple': `${String(p.dia).padStart(2, '0')}/${String(p.mes + 1).padStart(2, '0')}`,
+      'Estado': p.estado ?? 1,
+    }))
+  );
+  const simple = (arr) => XLSX.utils.json_to_sheet(
+    (arr || []).map((p) => ({ 'Nombre': p.nombre, 'Fecha': p.fecha || '' }))
+  );
+
+  XLSX.utils.book_append_sheet(wb, hojaCumples, 'CUMPLES');
+  XLSX.utils.book_append_sheet(wb, simple(data.nino), 'DIA DEL ÑINO');
+  XLSX.utils.book_append_sheet(wb, simple(data.navidad), 'NAVIDAD');
+
+  const nombre = `${nombreBackupLuxcar()}.xlsx`;
+  XLSX.writeFile(wb, nombre);
+  return nombre;
+}
+
 export const MESES_ES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
