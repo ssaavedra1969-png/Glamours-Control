@@ -1,0 +1,235 @@
+/* ============================================================
+   Codigos de Barras — estilos propios de la seccion (cb-)
+   Seccion aislada: este archivo NO toca estilos del resto de la app.
+   ============================================================ */
+
+.cb-page { display: flex; flex-direction: column; gap: 1.5rem; }
+
+.cb-header { display: flex; align-items: center; gap: 0.9rem; }
+.cb-icon-box {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: linear-gradient(135deg, #d4af37 0%, #b8962e 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); flex-shrink: 0;
+}
+.cb-title { font-size: 1.35rem; font-weight: 800; color: #f1f5f9; line-height: 1.2; }
+.cb-subtitle { font-size: 0.82rem; color: #94a3b8; }
+
+.cb-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px; padding: 1.25rem;
+}
+.cb-card-title {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.09em;
+  text-transform: uppercase; color: #94a3b8; margin-bottom: 1rem;
+}
+.cb-card-title .count {
+  background: rgba(212, 175, 55, 0.15); color: #d4af37;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.7rem;
+}
+
+/* ---------- Generador ---------- */
+.cb-field-head { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+.cb-field-head label { flex: 1; }
+.cb-selrow { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.8rem; }
+.cb-field { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.cb-field label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: #94a3b8; }
+.cb-select, .cb-input {
+  width: 100%; background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 10px;
+  color: #e2e8f0; padding: 0.6rem 0.7rem; font-size: 0.88rem;
+  outline: none; transition: border-color 0.15s;
+}
+.cb-select:focus, .cb-input:focus { border-color: #d4af37; }
+.cb-select option { background: #17172a; color: #e2e8f0; }
+.cb-input[readonly] { opacity: 0.7; }
+
+.cb-hero {
+  margin-top: 1.1rem; border-radius: 14px; padding: 1.4rem 1.2rem;
+  background: linear-gradient(135deg, #854d0e 0%, #a16207 40%, #ca8a04 100%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.9rem;
+  position: relative; overflow: hidden;
+}
+.cb-hero::after {
+  content: '$'; position: absolute; right: 1rem; top: -1.6rem;
+  font-size: 8rem; font-weight: 900; opacity: 0.05; pointer-events: none;
+}
+.cb-hero-empty { color: rgba(255, 255, 255, 0.85); font-size: 0.85rem; text-align: center; }
+.cb-code {
+  font-size: 2.6rem; font-weight: 900; letter-spacing: 0.14em;
+  color: #fff; text-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+  font-variant-numeric: tabular-nums; text-align: center; line-height: 1.1;
+}
+.cb-chips { display: flex; flex-wrap: wrap; gap: 0.45rem; justify-content: center; position: relative; z-index: 1; }
+.cb-chip {
+  background: rgba(0, 0, 0, 0.28); border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px; padding: 0.22rem 0.7rem; font-size: 0.72rem;
+  color: #fef3c7; display: flex; align-items: center; gap: 0.4rem;
+}
+.cb-chip b { color: #fff; font-weight: 700; }
+.cb-barcode-box {
+  background: #fff; border-radius: 10px; padding: 0.55rem 0.9rem 0.4rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
+  position: relative; z-index: 1; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.cb-barcode-box svg { display: block; }
+.cb-barcode-num {
+  color: #111; font-size: 0.95rem; font-weight: 700; letter-spacing: 0.3em;
+  font-variant-numeric: tabular-nums; padding-left: 0.3em;
+}
+.cb-printrow { display: flex; align-items: center; justify-content: center; gap: 0.7rem; flex-wrap: wrap; position: relative; z-index: 1; }
+.cb-qty { display: flex; align-items: center; gap: 0.5rem; }
+.cb-qty label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.8); }
+.cb-qty input {
+  width: 64px; text-align: center; background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px;
+  color: #fff; padding: 0.45rem; font-size: 0.95rem; font-weight: 700; outline: none;
+}
+.cb-qty input:focus { border-color: #fff; }
+.cb-qty input::-webkit-outer-spin-button, .cb-qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cb-qty input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+/* ---------- Botones ---------- */
+.cb-btn {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  border: none; border-radius: 10px; padding: 0.62rem 1rem;
+  font-size: 0.85rem; font-weight: 700; cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+}
+.cb-btn:hover { filter: brightness(1.12); }
+.cb-btn:active { transform: translateY(1px); }
+.cb-btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+.cb-btn-gold { background: linear-gradient(135deg, #d4af37, #b8962e); color: #12121f; }
+.cb-btn-dark { background: rgba(0, 0, 0, 0.3); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); }
+.cb-btn-ghost { background: rgba(255, 255, 255, 0.06); color: #cbd5e1; border: 1px solid rgba(255, 255, 255, 0.1); }
+.cb-btn-danger { background: #7f1d1d; color: #fecaca; }
+.cb-btn-sm { padding: 0.42rem 0.75rem; font-size: 0.78rem; }
+
+.cb-ico-btn {
+  width: 28px; height: 28px; border-radius: 8px; border: none;
+  background: rgba(255, 255, 255, 0.06); color: #94a3b8;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+}
+.cb-ico-btn:hover { background: rgba(255, 255, 255, 0.14); color: #f1f5f9; }
+.cb-ico-btn.edit:hover { color: #d4af37; }
+.cb-ico-btn.del:hover { background: rgba(127, 29, 29, 0.5); color: #fca5a5; }
+
+/* ---------- Tablas de catalogos ---------- */
+.cb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 1.1rem; }
+.cb-toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.7rem; }
+.cb-toolbar .cb-input { flex: 1; }
+.cb-add-row { display: flex; gap: 0.5rem; margin-bottom: 0.7rem; }
+.cb-add-row .cb-input { flex: 1; }
+.cb-add-row .cb-input.code { max-width: 86px; font-variant-numeric: tabular-nums; text-align: center; }
+.cb-hint { font-size: 0.7rem; color: #64748b; margin: -0.35rem 0 0.7rem; }
+
+.cb-rows { display: flex; flex-direction: column; gap: 0.3rem; max-height: 320px; overflow-y: auto; }
+.cb-row {
+  display: flex; align-items: center; gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px; padding: 0.45rem 0.6rem;
+}
+.cb-row:hover { background: rgba(255, 255, 255, 0.05); }
+.cb-row-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem; font-weight: 700; color: #d4af37;
+  background: rgba(212, 175, 55, 0.1); border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 6px; padding: 0.12rem 0.45rem; min-width: 52px; text-align: center;
+}
+.cb-row-name { flex: 1; min-width: 0; font-size: 0.85rem; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-row .cb-input { flex: 1; padding: 0.35rem 0.55rem; font-size: 0.83rem; }
+.cb-vacio { font-size: 0.8rem; color: #64748b; text-align: center; padding: 1rem 0; }
+
+/* ---------- Modales ---------- */
+.cb-overlay {
+  position: fixed; inset: 0; background: rgba(4, 6, 14, 0.72);
+  backdrop-filter: blur(4px); display: flex; align-items: flex-start;
+  justify-content: center; padding-top: 7vh; z-index: 960; overflow-y: auto;
+}
+.cb-modal {
+  background: #151527; border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px; width: 100%; max-width: 440px; margin: 0 1rem 4vh;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+.cb-modal-head {
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 1.1rem 1.2rem 0.4rem;
+}
+.cb-modal-head h3 { font-size: 1rem; font-weight: 800; color: #f1f5f9; margin: 0; flex: 1; }
+.cb-modal-body { padding: 0.6rem 1.2rem; display: flex; flex-direction: column; gap: 0.8rem; }
+.cb-modal-text { font-size: 0.88rem; color: #cbd5e1; line-height: 1.5; }
+.cb-modal-foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.8rem 1.2rem 1.1rem; }
+.cb-modal .cb-ico-x {
+  width: 30px; height: 30px; border-radius: 8px; border: none;
+  background: rgba(255, 255, 255, 0.06); color: #94a3b8; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.cb-modal .cb-ico-x:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.cb-icon-sq {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cb-print-note {
+  background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 10px; padding: 0.6rem 0.8rem; font-size: 0.78rem; color: #fde68a;
+  line-height: 1.45;
+}
+.cb-print-summary {
+  background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px; padding: 0.7rem 0.9rem; font-size: 0.83rem; color: #cbd5e1;
+  display: flex; flex-direction: column; gap: 0.25rem;
+}
+.cb-print-summary b { color: #fff; }
+.cb-print-summary .code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #d4af37; font-weight: 700; letter-spacing: 0.12em;
+}
+
+/* ============================================================
+   Etiqueta 62 x 29 mm (Brother QL-800)
+   La impresion real se hace en una ventana dedicada (popup con su
+   propio @page); aca solo queda la vista previa en pantalla.
+   ============================================================ */
+.cb-pre {
+  display: flex; flex-direction: column; gap: 0.6rem; align-items: center;
+  max-height: 42vh; overflow-y: auto;
+  background: rgba(255, 255, 255, 0.04); border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 12px; padding: 0.9rem;
+}
+
+.cb-label {
+  width: 62mm; height: 29mm; box-sizing: border-box;
+  background: #fff; color: #000;
+  padding: 1.2mm 2.2mm 1.2mm;
+  display: flex; flex-direction: column;
+  overflow: hidden; page-break-after: always; break-after: page;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.cb-l-marca {
+  width: 100%; text-align: center; font-size: 7.5pt; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.14em; line-height: 1.1;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-left: 0.14em;
+}
+.cb-l-barcode { width: 100%; flex: 1; min-height: 0; object-fit: contain; display: block; }
+.cb-l-num {
+  font-size: 8pt; font-weight: 800; text-align: center;
+  letter-spacing: 0.28em; font-variant-numeric: tabular-nums;
+  padding-left: 0.28em; line-height: 1.15; margin-top: 0.4mm;
+}
+.cb-l-datos { text-align: center; margin-top: 0.5mm; }
+.cb-l-prenda {
+  font-size: 7.5pt; font-weight: 700; line-height: 1.15;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.cb-l-extra { font-size: 6.5pt; font-weight: 500; color: #222; line-height: 1.15; }
+
+@media (max-width: 640px) {
+  .cb-code { font-size: 1.7rem; }
+  .cb-modal { max-width: calc(100vw - 2rem); }
+}
