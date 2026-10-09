@@ -159,7 +159,7 @@ export default function CodigosBarras() {
       if (codigoCompleto) {
         try {
           JsBarcode(genRef.current, codigoCompleto, {
-            format: 'CODE128', width: 2.4, height: 64, margin: 0,
+            format: 'CODE128C', width: 2.4, height: 64, margin: 0,
             fontSize: 0, displayValue: false, background: '#ffffff', lineColor: '#000000',
           });
         } catch { /* codigo invalido: no deberia pasar */ }
@@ -169,13 +169,13 @@ export default function CodigosBarras() {
     }
   }, [codigoCompleto]);
 
-  // Barcode para las etiquetas de impresion (PNG -> img)
+  // Barcode para la vista previa del modal (imagen PNG de pantalla)
   useEffect(() => {
     if (!printData) { setBarcodeUrl(null); return; }
     try {
       const canvas = document.createElement('canvas');
       JsBarcode(canvas, printData.codigo, {
-        format: 'CODE128', width: 2.2, height: 60, margin: 0,
+        format: 'CODE128C', width: 2.2, height: 60, margin: 0,
         fontSize: 0, displayValue: false, background: '#ffffff', lineColor: '#000000',
       });
       setBarcodeUrl(canvas.toDataURL('image/png'));
@@ -323,9 +323,15 @@ export default function CodigosBarras() {
     if (!tiendas.length) return;
     const barcode = (codigo) => {
       try {
-        const c = document.createElement('canvas');
-        JsBarcode(c, codigo, { format: 'CODE128', width: 2.2, height: 60, margin: 0, fontSize: 0, displayValue: false, background: '#ffffff', lineColor: '#000000' });
-        return c.toDataURL('image/png');
+        // SVG vectorial (imprime ntido a cualquier escala) + CODE128C:
+        // 10 digitos = ~70 modulos (barras doble de gruesas que CODE128) + quiet zone.
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        JsBarcode(svg, codigo, { format: codigo.length % 2 === 0 ? 'CODE128C' : 'CODE128', width: 5.5, height: 80, margin: 12, fontSize: 0, displayValue: false, background: '#ffffff', lineColor: '#000000' });
+        const bw = svg.getAttribute('width');
+        const bh = svg.getAttribute('height');
+        if (bw && bh) svg.setAttribute('viewBox', `0 0 ${bw} ${bh}`);
+        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+        return `<div class="bc">${svg.outerHTML}</div>`;
       } catch { return ''; }
     };
     const labels = tiendas.map((t) => {
@@ -333,7 +339,7 @@ export default function CodigosBarras() {
       return `
       <div class="lbl">
         <div class="marca">${esc(t.marca)}</div>
-        ${img ? `<img src="${img}" alt="">` : ''}
+        ${img || ''}
         <div class="num">${fmtCodigo(t.codigo)}</div>
         <div class="datos">
           <div class="prenda">${esc(t.prenda)}</div>
@@ -364,7 +370,8 @@ export default function CodigosBarras() {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     padding-left: .14em;
   }
-  img { width: 100%; flex: 1; min-height: 0; object-fit: contain; display: block; }
+  .bc { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #fff; }
+  .bc svg { display: block; width: 100%; height: 100%; }
   .num {
     font-size: 8pt; font-weight: 800; text-align: center; letter-spacing: .28em;
     padding-left: .28em; line-height: 1.15; margin-top: .4mm;
