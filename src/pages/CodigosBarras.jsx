@@ -324,18 +324,20 @@ export default function CodigosBarras() {
     if (!tiendas.length) return;
     const barcode = (codigo) => {
       try {
-        // Bitmap negro puro a 300 dpi (bwip-js): cada barra = 6 puntos de impresion
-        // enteros del cabezal termico. Sin anti-aliasing ni re-muestreo => negro solido.
+        // Bitmap negro puro de alta resolucion (bwip-js). Se renderiza a 12 px por
+        // modulo (=~610 dpi de origen) y se imprime a 0.5 mm por modulo. Barras anchas
+        // (6+ puntos del cabezal) y sobrada resolucion para que Chrome no las difumine.
+        const MODULE_MM = 0.5;
+        const scale = 12;
         const opts = {
-          bcid: 'code128', text: codigo, scale: 6, height: 7,
+          bcid: 'code128', text: codigo, scale, height: 7,
           paddingleft: 10, paddingright: 10, paddingtop: 0, paddingbottom: 0,
           includetext: false, backgroundcolor: 'ffffff', barcolor: '000000',
         };
         const c = document.createElement('canvas');
         bwipjs.toCanvas(c, opts);
-        const mm = 25.4 / 300;
-        const wmm = (c.width * mm).toFixed(2);
-        const hmm = (c.height * mm).toFixed(2);
+        const wmm = (c.width / scale * MODULE_MM).toFixed(2);
+        const hmm = (c.height / scale * MODULE_MM).toFixed(2);
         return `<div class="bc"><img class="bcimg" src="${c.toDataURL('image/png')}" alt="" style="width:${wmm}mm; height:${hmm}mm;"></div>`;
       } catch { return ''; }
     };
