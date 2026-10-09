@@ -6,10 +6,11 @@ Sistema de gestión comercial: **libro de caja doble (Blanco/Negro)**, ventas, c
 
 ## Stack
 
-- **Frontend**: React 18 + Vite (`npm run dev` → http://localhost:5173)
+- **Frontend**: React 19 + Vite (`npm run dev` → http://localhost:5173)
 - **Backend**: Firebase — Auth + Firestore (proyecto `glamours-control`)
-- **Librerías clave**: react-hot-toast, lucide-react, xlsx (parseo Excel), recharts
+- **Librerías clave**: react-hot-toast, lucide-react, xlsx (parseo Excel), recharts, **jsbarcode** (códigos de barras CODE128 para etiquetas)
 - **Entorno dev**: emuladores locales de Firebase (Auth :9099, Firestore :8080, UI :4000)
+- **Deploy producción**: **Vercel** (git push a `main` → deploy automático, ~2 min). Ver sección Producción
 
 ## Comandos y arranque del entorno
 
@@ -40,7 +41,9 @@ firebase emulators:start
 src/
 ├── config/firebase.js          Init SDK + conexión a emuladores. Exporta firebaseConfig/auth/db/storage
 ├── services/
-│   ├── firestoreDB.js          SERVICIO CENTRAL de datos (clase FirestoreDB). Ver "Fórmula de Saldos"
+│   ├── firestoreDB.js          SERVICIO CENTRAL de datos (clase FirestoreDB, export DEFAULT). Ver "Fórmula de Saldos"
+│   ├── codigosDB.js            Sección Códigos de Barras: catalogs marcas/prendas/colores/talles + contador
+│   │                           transaccional de prendas. AISLADO de firestoreDB (no tocar el central)
 │   ├── cargaService.js         Job singleton de carga de Excel FUERA de React: sobrevive cambios de sección,
 │   │                           progreso en vivo + toast global al terminar
 │   └── calendarioDB.js         Datos del calendario
@@ -48,6 +51,8 @@ src/
 │   ├── excelParser.js          processData() + separarDuplicadosInternos(). normalizeColumn tolera
 │   │                           acentos/espacios/mayúsculas (COLUMNAS_MAP). Dedup interno: omite una fila
 │   │                           solo si TODOS los campos coinciden con otra del mismo archivo
+│   ├── ventaTypes.js           ÚNICA fuente de verdad de la clasificación de ventas (5 tipos)
+│   ├── luxcarParser.js         Parser Excel Regalos Empresariales + descargarBackupLuxcar (3 hojas)
 │   ├── dateUtils.js            today(), defaultDateFrom/To, formatDateTime
 │   ├── formatCurrency.js       Formato moneda AR
 │   └── exportUtils.js          exportToCSV / exportToExcel / exportToPDF
@@ -56,12 +61,16 @@ src/
 │   ├── DateFilter.jsx          Filtro de fechas estándar
 │   └── ResultadoCarga.jsx      Inspector post-carga: chips Cargados/Dup. del archivo/Ya en la base.
 │                               Permite "cargar igualmente" dups internos y eliminar dups de la base
-└── pages/                      Dashboard, Ventas, Caja, CierresCaja, Reportes, Auditoria, Configuracion, CargaExcel, Login
+└── pages/                      Dashboard, Ventas, Caja, CierresCaja, Reportes, Auditoria, Configuracion,
+                                CargaExcel, Login, Luxcar (Regalos Empresariales),
+                                CodigosBarras (+ CodigosBarras.css propio)
 ```
+
+> Docs complementarios en raíz: `DESARROLLO.md` (levantar entorno en otra PC, datos Luxcar), `AGENTS.md` (este archivo).
 
 ## Fórmula de Saldos (SAGRADA — no modificar sin incrementar SALDO_VERSION)
 
-`firestoreDB.js` exporta `SALDO_VERSION = 7`. Los saldos van **por categoría separada** (Blanco/Negro).
+`firestoreDB.js` exporta `SALDO_VERSION = 8`. Los saldos van **por categoría separada** (Blanco/Negro).
 
 Regla por código de movimiento:
 - **500 "En caja"** → ANCLA: fija el saldo = monto (conteo físico declarado). **RESETEA AMBAS categorías** (Blanco y Negro) a 0 antes de fijar. Esto es porque el conteo físico es del TOTAL de la caja, no de una categoría.
@@ -155,7 +164,64 @@ Blanco = declarado (amarillo #facc15), Negro = no declarado (gris).
 - **Calidad de datos histórica**: en años pasados ~40% de los días no cuadran ventas-en-efectivo vs movimientos de caja (egresos pagados de otra fuente, ventas no registradas que igual alimentan la caja). Es un problema de los DATOS, no de la app. La fórmula está verificada contra datos recientes reales.
 - Las cargas de Excel son el flujo principal: archivos concatenados multi-año (~7000 filas). El pipeline omite automáticamente duplicados internos exactos y muestra los ya-existentes-en-base en ResultadoCarga para decidir.
 
-## Últimos cambios (agosto 2026)
+## Sección Regalos Empresariales (Luxcar)
+
+Ruta `/luxcar`. Componente único `src/pages/Luxcar.jsx` + estilos `lx-*` en `App.css` + parser `src/utils/luxcarParser.js`. Colección `luxcar_personas`: docs `cumple` `{nombre,dia,mes,estado}` / `nino`,`navidad` `{nombre,fecha}` (fecha `dd/mm`). Commit `8127de4`.
+
+- **Alta en cadena**: botón "Agregar persona" → modal "¿A dónde agregar?" con tildes múltiples → la misma persona se carga en secuencia (Cumpleaños → Día del Niño → Navidad) y **el backup Excel se descarga SOLO al final** de la cadena (si cancela a mitad, igual descarga lo guardado)
+- **Fechas de referencia** (`FECHA_REF`): Día del Niño 15/08, Navidad 24/12 — prellenadas en alta/cadena y muestra `FechaRefHint` editable también al editar
+- **Capitalización**: `capitalizar()` en altas, ediciones y nombres cargados en formularios
+- **Popups**: centrados (overlay `overflow-y:auto`, `align-items:flex-start + padding-top 7vh`), click fuera NO cierra NINGÚN modal; backup previo obligatorio solo en editar/eliminar (popup de backup `zIndex 950`)
+- Formularios nino/navidad unificados con formato cumpleaños (Día + Mes → `fechaDeDM`)
+- Parser re-importa el propio backup idéntico: round-trip verificado con `test-roundtrip-luxcar.mjs` (3 hojas OK). OJO: la clave de datos es `cumple` (singular), NO `cumples`
+- Entorno/datos: ver `DESARROLLO.md`; scripts `sembrar-luxcar-todos-meses.mjs`, `fix-nombres-luxcar.mjs`
+
+## Sección Códigos de Barras (octubre 2026)
+
+Ruta `/codigos` (menú **entre Regalos Empresariales y Cierres de Caja** — pedido explícito del usuario). Archivos: `src/pages/CodigosBarras.jsx` + `src/pages/CodigosBarras.css` (CSS propio, prefijo `cb-`) + `src/services/codigosDB.js`. **Sección aislada**: no toca ni depende del resto (solo hace `addAuditLog` de firestoreDB). Commit `814ee78`.
+
+### Formato del código (10 dígitos)
+
+`XX XXXX XX XX` = **2 marca + 4 prenda + 2 color + 2 talle** (orden confirmado por el usuario: Marca-Prenda-Color-Talle, NO el orden talle/color del pedido original).
+
+Ej: `01 0001 03 04` → Nike / Remera manga corta / Rojo / Talle M (la función `fmtCodigo()` agrupa para mostrar; el barrado va sin espacios).
+
+### Modelo de datos (colecciones nuevas, prefijo `codigos_`)
+
+| Colección | Doc ID | Contenido |
+|---|---|---|
+| `codigos_marcas` | código 2d (`01`) | `{codigo, nombre, creado}` — código lo asigna el usuario |
+| `codigos_prendas` | código 4d (`0001`) | `{codigo, nombre, creado}` — contador automático |
+| `codigos_colores` | código 2d | `{codigo, nombre, creado}` |
+| `codigos_talles` | código 2d | `{codigo, nombre, creado}` |
+| `codigos_meta/prenda_counter` | — | `{next, actualizado}` — contador **monótono** |
+
+- **Unicidad e irrepetibilidad garantizadas por el ID del doc** (crear un código duplicado falla solo; doble check en cliente + servidor)
+- **Contador de prendas**: transaccional (`runTransaction`), arranca `0001`, **nunca retrocede** (borrar una prenda no libera su código — huecos permitidos). Si falta el counter (p. ej. recién restaurado), se inicializa en `max(id existente)+1` para no pisar datos
+- ⚠️ **Gotcha del SDK**: `tx.get(query)` DENTRO de `runTransaction` revienta (`Cannot read properties of undefined (reading 'path')`) en firebase@12 — `tx.get(doc)` SÍ funciona. Por eso `nextPrendaCodigo()` resuelve el max de prendas **fuera** de la transacción y la transacción solo toca el doc counter
+
+### UI
+
+- **Generador** (card arriba): 4 selects (marca/prenda/color/talle) con botón "+" para alta rápida desde el propio select; hero ámbar con código agrupado grande, chips de datos, barcode SVG (jsbarcode CODE128) sobre caja blanca, campo cantidad (1-100), botones **Agregar al TXT** + **Imprimir**
+- **4 cards de catálogo** (abajo): tabla con buscador, alta/edición vía modal (código solo editable en marcas/colores/talles; prendas siempre automático), borrado con confirm. Reglas de Firestore: DELETE solo admin (operador recibe error → toast)
+- **Impresión**: **ventana popup dedicada** (`window.open` + HTML propio con `@page { size: 62mm 29mm; margin: 0 }`) → en el diálogo elegir Brother QL-800 / 62×29. NO usar `window.print()` sobre el DOM de la app: rompe con overlays/visibility hacks y pagina mal multi-etiqueta. El popup pagina bien (1 etiqueta por página) y no afecta impresiones de otras secciones. Si bloquea popups → toast "Permití las ventanas emergentes"
+- **Etiqueta 62×29mm** (mismos estilos en CSS preview + template del popup, mantener sincronizados): marca ARRIBA centrada en una línea (letter-spacing ancho) → barcode al **MÁXIMO** (`flex:1`) → número del código → abajo centrado prenda (2 líneas clamp) y `color · Talle X`
+- **Export TXT → formato definitivo del sistema de ventas** (commit a definir): card "TXT del sistema de ventas" debajo del generador que se va llenando en vivo con cada código **imprimido o agregado** (botón "Agregar al TXT"). Formato igual a `Muestras/Articulo_Descripcion_Marca.txt`: `Articulo<TAB>Descripcion<TAB>Marca`, **una fila por código** (marca+prenda+color+talle = 10 dígitos), sin encabezado, UTF-8 sin BOM, saltos LF. Lista **persistente en localStorage** (`gl_codigos_etiquetas`, sobrevive recargas; dedup por artículo). Botones: **Imprimir todo** (lote: 1 etiqueta por código en el panel, misma plantilla 62×29) · **Vaciar** · **Exportar TXT** (descarga `Articulo_Descripcion_Marca.txt`). Lo que se imprime individual también se suma solo a la lista.
+
+### Cuota Firebase (plan Spark)
+
+Al abrir la página: 4 lecturas (1 por colección). Alta: 1 getDoc + 1 setDoc. Edición: 1 updateDoc. Baja: 1 deleteDoc. Prenda nueva: 1-2 lecturas + 1 escritura (counter). Todo contabilizado con `trackOp` (misma contabilidad de Salud de Firebase).
+
+### Datos sembrados — SOLO emulador
+
+marcas `01 Nike, 02 Adidas, 03 Puma, 04 Los Gatos`; colores `01 Negro, 02 Blanco, 03 Rojo, 04 Azul`; talles `01-05 = XS,S,M,L,XL`; prendas `0001 Remera manga corta`. **En PRODUCCIÓN las tablas arrancan vacías** (el usuario crea sus datos desde la sección).
+
+### Test
+
+`node probar-codigos.mjs` (emulador activo) — E2E **idempotente** (tolerante a datos del usuario): unicidad por doc ID, validación de largo, contador secuencial, no-reutilización de códigos borrados. Última corrida: **10/10 OK**. Solo borra docs de prueba propios (nombre "Prenda de prueba") y el contador solo si no existía antes.
+
+
+## Últimos cambios
 
 1. **CierresCaja**: restyling completo al design system + exportación Excel/PDF
 2. **Auditoria**: restyling + cards resumen (registros/módulos/usuarios) + filtros nuevos + exportación
@@ -181,6 +247,9 @@ Blanco = declarado (amarillo #facc15), Negro = no declarado (gris).
 18. **Default de fechas = mes en curso** en todas las secciones (`dateUtils.defaultDateFrom` = día 1 del mes actual); **Gestión de Usuarios permite cambiar rol** (selector admin/operador solo para admins, método `updateUserRol`, efecto tras re-login, no permite cambiar la propia cuenta)
 19. **Caché anti-relectura** (ahorro de cuota Firestore): `getAllRaw()` cachea lecturas completas de `caja`/`ventas` en sessionStorage (TTL 10 min, claves `gl_all_caja`/`gl_all_ventas`) y los wrappers de escritura (`_addDoc/_setDoc/_updateDoc/_deleteDoc`/batch commit) invalidan el caché — navegar entre secciones ya no relee miles de docs; cada escritura fuerza relectura fresca. La card Salud de Firebase aclara entorno: en emulador avisa que NO consume cuota real de Google. OJO: `probar-flujo-caja.mjs` ahora captura el total inicial de docs dinámicamente (antes esperaba 28 hardcodeado)
 20. **500 resetea ambas categorías (fix saldo Negro)**: el500 es conteo FÍSICO del total de caja, no de una categoría. Antes solo reseteaba Blanco, Negro acumulaba sin tope desde 2022 (~$21.7M). Fix: `aplicarMovimiento()` tiene param `resetBoth` (true=ambas, false=solo la del movimiento). UI formulas (Dashboard/Caja/CierresCaja) también resetean ambas. Commits: `043dac0` (UI), `ba504bf` (DB). **After deploy: usuario debe clickear "Recalcular saldos"**
+21. **Luxcar pulido** (commit `8127de4`): alta en cadena multi-tipo con backup Excel al FINAL, popups centrados sin cierre por clic exterior (los 5 modales), formatos de Día del Niño/Navidad unificados con fecha de referencia (15/08, 24/12) editable, capitalización de nombres, botón toolbar "Agregar" arreglado (pasaba `tab` en vez de `'choose'` y no abría nada). Ver sección Luxcar
+22. **Sección Códigos de Barras nueva** (commit `814ee78`): generador de códigos 10 dígitos + 4 catalogs únicos en Firestore + contador transaccional de prendas + etiquetas Brother QL-800 vía popup + export TXT provisorio + `jsbarcode` como dependencia nueva. Ver sección completa arriba
+23. **TXT definitivo del sistema de ventas en Códigos de Barras** (commit a definir): export ahora sólo con lo impreso/agregado — card "TXT del sistema de ventas" en vivo, formato `Articulo<TAB>Descripcion<TAB>Marca` (10 dígitos, sin encabezado, UTF-8 sin BOM, LF), lista persistente en localStorage, botones Agregar al TXT / Imprimir / Imprimir todo (lote 1 etiqueta por código) / Vaciar / Exportar TXT. Sin cambios en la lógica de caja/ventas
 
 ## Pendientes conocidos
 
@@ -188,6 +257,8 @@ Blanco = declarado (amarillo #facc15), Negro = no declarado (gris).
 - El dedup vs base usa comparación por TODOS los campos (regla del usuario: "para no cargar tiene que coincidir todos los campos") — no cambiar esta regla sin consultar
 - Al pasar a producción recordar: reglas de Firestore actuales solo exigen `request.auth != null` (sin roles). Evaluar endurecer por rol
 - **Verificador de caja**: script `verificar-caja.mjs` en la raíz de glamours-app replica la fórmula v6 y audita integridad/estado/anclas dobles/conciliación contra el EMULADOR. Correr con `node verificar-caja.mjs` (emulador activo). Última corrida: 3949/3949 saldos íntegros, estado OK, 36 anclas dobles (dato histórico)
+- **Códigos de Barras — impresión física**: falta validar con la Brother QL-800 real (medidas 62×29, que el popup no esté bloqueado y el tamaño del barrado lea bien)
+- **Códigos de Barras — producción**: tablas vacías en prod (los datos sembrados son solo del emulador); el usuario debe cargar sus marcas/prendas/colores/talles
 
 ## Diagnóstico rápido de saldos (SI SE ROMPEN LOS SALDOS)
 
@@ -235,3 +306,13 @@ Blanco = declarado (amarillo #facc15), Negro = no declarado (gris).
 4. **Smoke test prod**: Firestore producción responde 403 a anónimos (reglas activas, base no expuesta)
 5. **Validado EN PRODUCCIÓN por el usuario**: primer login de ssaavedra1969@gmail.com (admin, auto-migrado por ensurePerfilUid) → alta de usuario operador desde Configuración funcionó (fix aplicado: addUser ANTES de fbSignOut de la app secundaria, porque las reglas solo permiten crear users/{uid} del propio autenticado) → login del operador OK. Pendiente probar: intento de borrado como operador debe ser rechazado
 6. Nota: borrar el perfil en Gestión de Usuarios NO elimina la cuenta de Authentication (esa requiere consola de Firebase); sin perfil uid-keyed el usuario pierde permisos de borrado/admin
+
+### Vercel — deploy real (octubre 2026)
+
+- **Repo**: `github.com/ssaavedra1969-png/Glamours-Control` (branch `main`); vinculado a Vercel vía `.vercel/repo.json` (proyecto `glamours-control`, CLI auth `ssaavedra1969-3480`)
+- **Flujo**: `git push origin main` → Vercel buildea y despliega SOLO (~2 min). **NO hay paso manual extra**. Los cambios locales NO llegan a Vercel hasta commitear y pushear
+- **Dominios**: `glamours-control.vercel.app` (producción, con alias) · `glamours-control-git-main-sandro1969.vercel.app` (preview)
+- **Verificar deploy**: `npx vercel inspect https://glamours-control.vercel.app` → muestra estado (`Ready`), id `dpl_...` y fecha. También se puede comprobar que el bundle nuevo tiene los cambios: bajar `/assets/index-<hash>.js` de la home y buscar un string propio de la feature
+- **Deploy de Luxcar mejorado**: commit `8127de4` · **Deploy de Códigos de Barras**: commit `814ee78`
+- Tras cada deploy: **Ctrl+F5** (los assets llevan hash y quedan cacheados). En local, `npx vite --mode production --port 5174` sigue sirviendo para smoke test sin tocar Vercel
+- Deploy fallido → revisar dashboard de Vercel (Deployments); el push a `main` con build rojo NO rompe el deploy anterior bueno

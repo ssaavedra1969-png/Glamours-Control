@@ -7,7 +7,7 @@ import {
 import JsBarcode from 'jsbarcode';
 import toast from 'react-hot-toast';
 import {
-  Barcode, Plus, Pencil, Trash2, Printer, Copy, X, Search, Tag, Shirt, Palette, Ruler, Download,
+  Barcode, Plus, Pencil, Trash2, Printer, X, Search, Tag, Shirt, Palette, Ruler, Download, ClipboardList, FilePlus,
 } from 'lucide-react';
 import './CodigosBarras.css';
 
@@ -104,6 +104,9 @@ export default function CodigosBarras() {
   const [confirmar, setConfirmar] = useState(null);  // {tipo, codigo, nombre}
   const [printData, setPrintData] = useState(null);  // {codigo, marca, prenda, color, talle, cantidad}
   const [barcodeUrl, setBarcodeUrl] = useState(null);
+  const [etiquetas, setEtiquetas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('gl_codigos_etiquetas') || '[]'); } catch { return []; }
+  });                                                // codigos agregados al TXT
   const genRef = useRef(null);
 
   async function cargar() {
@@ -162,6 +165,11 @@ export default function CodigosBarras() {
       toast.error('No se pudo generar el codigo de barras');
     }
   }, [printData]);
+
+  // Persiste la lista de etiquetas impresas (sobrevive recargas de la app)
+  useEffect(() => {
+    localStorage.setItem('gl_codigos_etiquetas', JSON.stringify(etiquetas));
+  }, [etiquetas]);
 
   // ---------- Catalogos: altas / ediciones / bajas ----------
   function abrirAlta(tipo) {
@@ -235,65 +243,90 @@ export default function CodigosBarras() {
       `Etiqueta ${fmtCodigo(codigoCompleto)} x${cantidad}`);
   }
 
-  // Exportacion TXT de todo lo cargado (formato PROVISIONAL mientras el
-  // sistema de ventas no define el definitivo: se adapta cuando este listo).
+  // Exportacion TXT para el sistema de ventas.
+  // Formato del archivo plano (igual a Muestras/Articulo_Descripcion_Marca.txt):
+  //   Articulo <TAB> Descripcion <TAB> Marca
+  // Contiene SOLO las etiquetas que se fueron imprimiendo (una fila por codigo,
+  // sin encabezado, UTF-8 sin BOM y saltos de linea LF).
   function exportarTxt() {
-    const total = cat.marcas.length + cat.prendas.length + cat.colores.length + cat.talles.length;
-    if (!total) { toast.error('No hay datos para exportar'); return; }
-    const hoy = new Date();
-    const stamp = `${String(hoy.getDate()).padStart(2, '0')}${String(hoy.getMonth() + 1).padStart(2, '0')}${String(hoy.getFullYear()).slice(2)}`;
-    const lineas = [
-      '# GLAMOURS - Exportacion Codigos de Barras',
-      `# Generado: ${hoy.toLocaleString('es-AR')}`,
-      '# Formato PROVISIONAL - pendiente de definicion por el sistema de ventas',
-      '# Registro: TIPO;CODIGO;NOMBRE',
-      '',
-    ];
-    const agregar = (tipo, items) => items.forEach((i) => lineas.push(`${tipo};${i.codigo};${i.nombre}`));
-    agregar('MARCA', cat.marcas);
-    agregar('PRENDA', cat.prendas);
-    agregar('COLOR', cat.colores);
-    agregar('TALLE', cat.talles);
-    const blob = new Blob(['\uFEFF' + lineas.join('\r\n')], { type: 'text/plain;charset=utf-8' });
+    if (!etiquetas.length) {
+      toast.error('Todavía no hay etiquetas en la lista');
+      return;
+    }
+    const filas = [...etiquetas]
+      .sort((a, b) => a.articulo.localeCompare(b.articulo))
+      .map((e) => `${e.articulo}\t${e.descripcion}\t${e.marca}`);
+    const blob = new Blob([filas.join('\n')], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `codigos_barras_${stamp}.txt`;
+    a.download = 'Articulo_Descripcion_Marca.txt';
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    toast.success(`TXT generado con ${total} registros`);
-    firestoreDB.addAuditLog(user?.email || 'sistema', 'EXPORT TXT', 'Codigos Barras', `${total} registros`);
+    toast.success(`TXT generado con ${filas.length} artículos`);
+    firestoreDB.addAuditLog(user?.email || 'sistema', 'EXPORT TXT', 'Codigos Barras', `${filas.length} articulos`);
   }
 
-  function copiar() {
+  // Agrega un codigo a la lista del TXT (sin duplicar por articulo).
+  function agregarEtiqueta(d) {
+    setEtiquetas((prev) => (
+      prev.some((e) => e.articulo === d.codigo)
+        ? prev
+        : [...prev, {
+          articulo: d.codigo, descripcion: d.prenda, marca: d.marca,
+          color: d.color || '', talle: d.talle || '',
+        }]
+    ));
+  }
+
+  // Boton "Agregar al TXT": incorpora la seleccion actual.
+  function agregarAlTxt() {
     if (!codigoCompleto) return;
-    navigator.clipboard.writeText(codigoCompleto)
-      .then(() => toast.success('Código copiado'))
-      .catch(() => toast.error('No se pudo copiar'));
+    agregarEtiqueta({
+      codigo: codigoCompleto, prenda: prenda.nombre, marca: marca.nombre,
+      color: color.nombre, talle: talle.nombre,
+    });
+    toast.success(`Agregado ${fmtCodigo(codigoCompleto)} al TXT`);
+  }
+
+  function vaciarLista() {
+    if (!etiquetas.length) return;
+    setEtiquetas([]);
+    toast.success('TXT vacío');
   }
 
   // Impresion: ventana dedicada con su propio @page (62 x 29 mm).
   // Aislada del DOM de la app: pagina bien aunque sean varias etiquetas
   // y no altera la impresion de las demas secciones.
-  function imprimirPopup() {
-    if (!printData) return;
-    const labels = Array.from({ length: printData.cantidad }).map(() => `
+  function abrirVentanaImpresion(tiendas) {
+    if (!tiendas.length) return;
+    const barcode = (codigo) => {
+      try {
+        const c = document.createElement('canvas');
+        JsBarcode(c, codigo, { format: 'CODE128', width: 2.2, height: 60, margin: 0, fontSize: 0, displayValue: false, background: '#ffffff', lineColor: '#000000' });
+        return c.toDataURL('image/png');
+      } catch { return ''; }
+    };
+    const labels = tiendas.map((t) => {
+      const img = barcode(t.codigo);
+      return `
       <div class="lbl">
-        <div class="marca">${esc(printData.marca)}</div>
-        ${barcodeUrl ? `<img src="${barcodeUrl}" alt="">` : ''}
-        <div class="num">${fmtCodigo(printData.codigo)}</div>
+        <div class="marca">${esc(t.marca)}</div>
+        ${img ? `<img src="${img}" alt="">` : ''}
+        <div class="num">${fmtCodigo(t.codigo)}</div>
         <div class="datos">
-          <div class="prenda">${esc(printData.prenda)}</div>
-          <div class="extra">${esc(printData.color)} · Talle ${esc(printData.talle)}</div>
+          <div class="prenda">${esc(t.prenda)}</div>
+          <div class="extra">${t.color && t.talle ? `${esc(t.color)} · Talle ${esc(t.talle)}` : (t.color ? esc(t.color) : (t.talle ? `Talle ${esc(t.talle)}` : ''))}</div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     const html = `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>Etiquetas ${fmtCodigo(printData.codigo)}</title>
+<title>Etiquetas (${tiendas.length})</title>
 <style>
   @page { size: 62mm 29mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -335,6 +368,26 @@ export default function CodigosBarras() {
     setTimeout(() => { w.focus(); w.print(); }, 350);
   }
 
+  // Imprimir la etiqueta individual (confirmada en el modal de vista previa).
+  function imprimirPopup() {
+    if (!printData) return;
+    agregarEtiqueta(printData);
+    const tiendas = Array.from({ length: printData.cantidad }).map(() => ({
+      codigo: printData.codigo, marca: printData.marca, prenda: printData.prenda, color: printData.color, talle: printData.talle,
+    }));
+    abrirVentanaImpresion(tiendas);
+  }
+
+  // Imprimir todo lo cargado en el TXT (1 etiqueta por codigo).
+  function imprimirTodo() {
+    if (!etiquetas.length) { toast.error('No hay códigos en el TXT'); return; }
+    const tiendas = [...etiquetas]
+      .sort((a, b) => a.articulo.localeCompare(b.articulo))
+      .map((e) => ({ codigo: e.articulo, marca: e.marca, prenda: e.descripcion, color: e.color || '', talle: e.talle || '' }));
+    abrirVentanaImpresion(tiendas);
+    firestoreDB.addAuditLog(user?.email || 'sistema', 'IMPRESION', 'Codigos Barras', `Lote de ${tiendas.length} etiquetas`);
+  }
+
   return (
     <div className="cb-page">
       {/* Encabezado */}
@@ -345,9 +398,6 @@ export default function CodigosBarras() {
           <div className="cb-subtitle">Generador de códigos y etiquetas · Brother QL-800 (62 × 29 mm)</div>
         </div>
         <span style={{ flex: 1 }} />
-        <button className="cb-btn cb-btn-ghost" onClick={exportarTxt} disabled={cargando}>
-          <Download size={15} /> Exportar TXT
-        </button>
       </div>
 
       {/* Generador */}
@@ -409,16 +459,45 @@ export default function CodigosBarras() {
                     onChange={(e) => setCantidad(e.target.value)}
                   />
                 </div>
-                <button className="cb-btn cb-btn-dark" onClick={copiar}>
-                  <Copy size={15} /> Copiar
+                <button className="cb-btn cb-btn-dark" onClick={agregarAlTxt}>
+                  <FilePlus size={15} /> Agregar al TXT
                 </button>
                 <button className="cb-btn cb-btn-gold" onClick={imprimir}>
-                  <Printer size={15} /> Imprimir etiqueta
+                  <Printer size={15} /> Imprimir
                 </button>
               </div>
             </>
           )}
         </div>
+      </div>
+
+      {/* TXT del sistema de ventas (se va armando con lo impreso/agregado) */}
+      <div className="cb-card">
+        <div className="cb-card-title">
+          <ClipboardList size={14} color="#d4af37" /> TXT del sistema de ventas
+          <span className="count">{etiquetas.length}</span>
+          <span style={{ flex: 1 }} />
+          <button className="cb-btn cb-btn-ghost cb-btn-sm" onClick={vaciarLista} disabled={cargando || !etiquetas.length}>
+            Vaciar
+          </button>
+          <button className="cb-btn cb-btn-dark cb-btn-sm" onClick={imprimirTodo} disabled={cargando || !etiquetas.length}>
+            <Printer size={13} /> Imprimir todo
+          </button>
+          <button className="cb-btn cb-btn-gold cb-btn-sm" onClick={exportarTxt} disabled={cargando || !etiquetas.length}>
+            <Download size={13} /> Exportar TXT
+          </button>
+        </div>
+        <div className="cb-txt-hint">
+          Cada código que imprimís o agregás aparece acá. Exportá para descargar{' '}
+          <b>Articulo_Descripcion_Marca.txt</b> (Artículo &lt;TAB&gt; Descripción &lt;TAB&gt; Marca).
+        </div>
+        {etiquetas.length === 0 ? (
+          <div className="cb-vacio">Todavía no hay códigos. Usá "Agregar al TXT" o imprimí una etiqueta.</div>
+        ) : (
+          <pre className="cb-txt">
+            {[...etiquetas].sort((a, b) => a.articulo.localeCompare(b.articulo)).map((e) => `${e.articulo}\t${e.descripcion}\t${e.marca}`).join('\n')}
+          </pre>
+        )}
       </div>
 
       {/* Catalogos */}

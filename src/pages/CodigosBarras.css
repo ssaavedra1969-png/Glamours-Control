@@ -144,6 +144,21 @@
 .cb-row-name { flex: 1; min-width: 0; font-size: 0.85rem; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cb-row .cb-input { flex: 1; padding: 0.35rem 0.55rem; font-size: 0.83rem; }
 .cb-vacio { font-size: 0.8rem; color: #64748b; text-align: center; padding: 1rem 0; }
+.cb-txt-hint { font-size: 0.72rem; color: #64748b; line-height: 1.5; }
+.cb-txt-hint b { color: #94a3b8; }
+.cb-txt {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: #d9f99d;
+  white-space: pre;
+  max-height: 260px;
+  overflow: auto;
+}
 
 /* ---------- Modales ---------- */
 .cb-overlay {
