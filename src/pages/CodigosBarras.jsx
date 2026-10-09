@@ -5,6 +5,7 @@ import {
   getCatalogos, addItem, updateItem, deleteItem, nextPrendaCodigo,
 } from '../services/codigosDB';
 import JsBarcode from 'jsbarcode';
+import bwipjs from 'bwip-js';
 import toast from 'react-hot-toast';
 import {
   Barcode, Plus, Pencil, Trash2, Printer, X, Search, Tag, Shirt, Palette, Ruler, Download, ClipboardList, FilePlus,
@@ -323,15 +324,19 @@ export default function CodigosBarras() {
     if (!tiendas.length) return;
     const barcode = (codigo) => {
       try {
-        // SVG vectorial (imprime ntido a cualquier escala) + CODE128C:
-        // 10 digitos = ~70 modulos (barras doble de gruesas que CODE128) + quiet zone.
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        JsBarcode(svg, codigo, { format: codigo.length % 2 === 0 ? 'CODE128C' : 'CODE128', width: 5.5, height: 80, margin: 12, fontSize: 0, displayValue: false, background: '#ffffff', lineColor: '#000000' });
-        const bw = svg.getAttribute('width');
-        const bh = svg.getAttribute('height');
-        if (bw && bh) svg.setAttribute('viewBox', `0 0 ${bw} ${bh}`);
-        svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-        return `<div class="bc">${svg.outerHTML}</div>`;
+        // Bitmap negro puro a 300 dpi (bwip-js): cada barra = 6 puntos de impresion
+        // enteros del cabezal termico. Sin anti-aliasing ni re-muestreo => negro solido.
+        const opts = {
+          bcid: 'code128', text: codigo, scale: 6, height: 7,
+          paddingleft: 10, paddingright: 10, paddingtop: 0, paddingbottom: 0,
+          includetext: false, backgroundcolor: 'ffffff', barcolor: '000000',
+        };
+        const c = document.createElement('canvas');
+        bwipjs.toCanvas(c, opts);
+        const mm = 25.4 / 300;
+        const wmm = (c.width * mm).toFixed(2);
+        const hmm = (c.height * mm).toFixed(2);
+        return `<div class="bc"><img class="bcimg" src="${c.toDataURL('image/png')}" alt="" style="width:${wmm}mm; height:${hmm}mm;"></div>`;
       } catch { return ''; }
     };
     const labels = tiendas.map((t) => {
@@ -371,7 +376,7 @@ export default function CodigosBarras() {
     padding-left: .14em;
   }
   .bc { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; background: #fff; }
-  .bc svg { display: block; width: 100%; height: 100%; }
+  .bc img { display: block; image-rendering: pixelated; }
   .num {
     font-size: 8pt; font-weight: 800; text-align: center; letter-spacing: .28em;
     padding-left: .28em; line-height: 1.15; margin-top: .4mm;
