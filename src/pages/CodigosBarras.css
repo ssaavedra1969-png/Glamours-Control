@@ -206,7 +206,7 @@
 }
 
 /* ============================================================
-   Etiqueta 62 x 29 mm (Brother QL-800)
+   Etiqueta 62 x 30 mm (Brother QL-800, rollo continuo 62 mm)
    La impresion real se hace en una ventana dedicada (popup con su
    propio @page); aca solo queda la vista previa en pantalla.
    ============================================================ */
@@ -218,7 +218,7 @@
 }
 
 .cb-label {
-  width: 62mm; height: 29mm; box-sizing: border-box;
+  width: 62mm; height: 30mm; box-sizing: border-box;
   background: #fff; color: #000;
   padding: 1.2mm 2.2mm 1.2mm;
   display: flex; flex-direction: column;

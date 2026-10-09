@@ -316,7 +316,7 @@ export default function CodigosBarras() {
     toast.success('TXT vacío');
   }
 
-  // Impresion: ventana dedicada con su propio @page (62 x 29 mm).
+  // Impresion: ventana dedicada con su propio @page (62 x 30 mm).
   // Aislada del DOM de la app: pagina bien aunque sean varias etiquetas
   // y no altera la impresion de las demas secciones.
   function abrirVentanaImpresion(tiendas) {
@@ -347,11 +347,11 @@ export default function CodigosBarras() {
 <meta charset="utf-8">
 <title>Etiquetas (${tiendas.length})</title>
 <style>
-  @page { size: 62mm 29mm; margin: 0; }
+  @page { size: 62mm 30mm; margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: #fff; }
   .lbl {
-    width: 62mm; height: 29mm; background: #fff; color: #000;
+    width: 62mm; height: 30mm; background: #fff; color: #000;
     padding: 1.2mm 2.2mm 1.2mm; display: flex; flex-direction: column;
     overflow: hidden; page-break-after: always; break-after: page;
     font-family: Arial, Helvetica, sans-serif;
@@ -414,7 +414,7 @@ export default function CodigosBarras() {
         <div className="cb-icon-box"><Barcode size={20} color="#12121f" /></div>
         <div>
           <div className="cb-title">Códigos de Barras</div>
-          <div className="cb-subtitle">Generador de códigos y etiquetas · Brother QL-800 (62 × 29 mm)</div>
+          <div className="cb-subtitle">Generador de códigos y etiquetas · Brother QL-800 (62 × 30 mm)</div>
         </div>
         <span style={{ flex: 1 }} />
       </div>
@@ -644,8 +644,10 @@ export default function CodigosBarras() {
                 <span>Color: {printData.color} · Talle: {printData.talle} · Cantidad: <b>{printData.cantidad}</b></span>
               </div>
               <div className="cb-print-note">
-                En el diálogo de impresión elegí la <b>Impresora Brother QL-800</b> y la plantilla{' '}
-                <b>62 × 29 mm</b>. Las etiquetas se imprimen una por página.
+                En el diálogo elegí la <b>Brother QL-800</b> y el tamaño <b>62 × 30 mm</b> (rollo
+                continuo de 62 mm), escala 100% y sin márgenes. El rollo <b>DK-1201 de 29 × 90 mm</b>{' '}
+                que trae la impresora <b>no sirve</b> para esta etiqueta: cargá el rollo continuo de 62 mm.
+                Las etiquetas se imprimen una por página.
               </div>
               <div className="cb-pre">
                 <div className="cb-label">
