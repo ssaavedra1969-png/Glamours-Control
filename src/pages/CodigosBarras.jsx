@@ -36,6 +36,20 @@ function esc(s) {
   ));
 }
 
+// Swatch visual para colores (SOLO si el nombre coincide con un color conocido).
+function swatchColor(nombre) {
+  const key = (nombre || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (!key) return null;
+  const conocidos = [
+    ['blanco', '#f8fafc'], ['negro', '#1e293b'], ['gris', '#94a3b8'], ['plata', '#cbd5e1'],
+    ['azul', '#3b82f6'], ['celeste', '#38bdf8'], ['amarillo', '#facc15'], ['verde', '#22c55e'],
+    ['rojo', '#ef4444'], ['rosa', '#f472b6'], ['violeta', '#a78bfa'], ['lavanda', '#c4b5fd'],
+    ['naranja', '#fb923c'], ['marron', '#a16207'], ['beige', '#d6d3d1'], ['dorado', '#d4af37'],
+  ];
+  const hit = conocidos.find(([palabra]) => key.includes(palabra));
+  return hit ? hit[1] : null;
+}
+
 function sugeridoCodigo(items, largo) {
   let max = 0;
   items.forEach((i) => {
@@ -72,23 +86,27 @@ function TablaCatalogo({ tipo, items, busqueda, setBusqueda, onAlta, onEditar, o
         />
         <span className="cb-ico-btn" style={{ cursor: 'default' }}><Search size={14} /></span>
       </div>
-      <div className="cb-rows">
-        {filtrados.length === 0 && (
-          <div className="cb-vacio">{busqueda ? `Sin resultados para "${busqueda}"` : 'Sin datos todavía.'}</div>
-        )}
-        {filtrados.map((item) => (
-          <div className="cb-row" key={item.codigo}>
-            <span className="cb-row-code">{item.codigo}</span>
-            <span className="cb-row-name" title={item.nombre}>{item.nombre}</span>
-            <button className="cb-ico-btn edit" title="Editar" onClick={() => onEditar(item)}>
-              <Pencil size={13} />
-            </button>
-            <button className="cb-ico-btn del" title="Eliminar" onClick={() => onEliminar(item)}>
-              <Trash2 size={13} />
-            </button>
-          </div>
-        ))}
-      </div>
+      {filtrados.length === 0 ? (
+        <div className="cb-vacio">{busqueda ? `Sin resultados para "${busqueda}"` : 'Sin datos todavía.'}</div>
+      ) : (
+        <div className="cb-rows">
+          {filtrados.map((item) => (
+            <div className="cb-row" key={item.codigo}>
+              <span className="cb-row-code">{item.codigo}</span>
+              {tipo === 'colores' && (
+                <i className="cb-dot" style={{ background: swatchColor(item.nombre) || '#334155' }} />
+              )}
+              <span className="cb-row-name" title={item.nombre}>{item.nombre}</span>
+              <button className="cb-ico-btn edit" title="Editar" onClick={() => onEditar(item)}>
+                <Pencil size={13} />
+              </button>
+              <button className="cb-ico-btn del" title="Eliminar" onClick={() => onEliminar(item)}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -100,6 +118,7 @@ export default function CodigosBarras() {
   const [sel, setSel] = useState({ marcas: '', prendas: '', colores: '', talles: '' });
   const [cantidad, setCantidad] = useState(1);
   const [busquedas, setBusquedas] = useState({ marcas: '', prendas: '', colores: '', talles: '' });
+  const [tabActivo, setTabActivo] = useState('prendas');
   const [modal, setModal] = useState(null);          // {modo:'alta'|'edicion', tipo, codigo, nombre}
   const [confirmar, setConfirmar] = useState(null);  // {tipo, codigo, nombre}
   const [printData, setPrintData] = useState(null);  // {codigo, marca, prenda, color, talle, cantidad}
@@ -500,20 +519,35 @@ export default function CodigosBarras() {
         )}
       </div>
 
-      {/* Catalogos */}
-      <div className="cb-grid">
-        {Object.keys(TIPOS_META).map((tipo) => (
-          <TablaCatalogo
-            key={tipo}
-            tipo={tipo}
-            items={cat[tipo]}
-            busqueda={busquedas[tipo]}
-            setBusqueda={(v) => setBusquedas((b) => ({ ...b, [tipo]: v }))}
-            onAlta={() => abrirAlta(tipo)}
-            onEditar={(item) => setModal({ modo: 'edicion', tipo, codigo: item.codigo, nombre: item.nombre })}
-            onEliminar={(item) => setConfirmar({ tipo, codigo: item.codigo, nombre: item.nombre })}
-          />
-        ))}
+      {/* Catalogos: 1 sola card con pestanas (marcas / prendas / colores / talles) */}
+      <div className="cb-card cb-tabs-card">
+        <div className="cb-tabs">
+          {Object.keys(TIPOS_META).map((tipo) => {
+            const I = TIPOS_META[tipo].icono;
+            return (
+              <button key={tipo} className={`cb-tab ${tabActivo === tipo ? 'cb-tab-on' : ''}`} onClick={() => setTabActivo(tipo)}>
+                <I size={13} color={tabActivo === tipo ? TIPOS_META[tipo].color : '#94a3b8'} />
+                {TIPOS_META[tipo].titulo}
+                <span className="count">{cat[tipo].length}</span>
+              </button>
+            );
+          })}
+        </div>
+        <TablaCatalogo
+          tipo={tabActivo}
+          items={cat[tabActivo]}
+          busqueda={busquedas[tabActivo]}
+          setBusqueda={(v) => setBusquedas((b) => ({ ...b, [tabActivo]: v }))}
+          onAlta={() => abrirAlta(tabActivo)}
+          onEditar={(item) => setModal({ modo: 'edicion', tipo: tabActivo, codigo: item.codigo, nombre: item.nombre })}
+          onEliminar={(item) => setConfirmar({ tipo: tabActivo, codigo: item.codigo, nombre: item.nombre })}
+        />
+      </div>
+
+      <div className="cb-legend">
+        Código completo = <b>2 dígitos</b> marca + <b>4 dígitos</b> prenda + <b>2 dígitos</b> color + <b>2 dígitos</b> talle.{' '}
+        Ej: <span className="mono">01</span> + <span className="mono">0001</span> + <span className="mono">01</span> +{' '}
+        <span className="mono">01</span> = <span className="mono">01 0001 01 01</span>
       </div>
 
       {/* Modal alta / edicion */}
